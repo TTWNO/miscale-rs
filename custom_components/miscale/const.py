@@ -27,3 +27,5 @@ POLL_COOLDOWN_SECONDS: Final = 20.0
 # the scale once it is ready.
 INACTIVITY_TIMEOUT_MS: Final = 10_000
 MEASUREMENT_TIMEOUT_MS: Final = 45_000
+
+EVENT_WEIGH_IN: Final = "weigh_in"

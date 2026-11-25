@@ -11,7 +11,7 @@ from .coordinator import MiScaleConfigEntry, MiScaleCoordinator
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.EVENT, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MiScaleConfigEntry) -> bool:

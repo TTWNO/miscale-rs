@@ -31,6 +31,18 @@
     }
   },
   "entity": {
+    "event": {
+      "weigh_in": {
+        "name": "Weigh-in",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "weigh_in": "Weigh-in"
+            }
+          }
+        }
+      }
+    },
     "sensor": {
       "last_weigh_in": {
         "name": "Last weigh-in"

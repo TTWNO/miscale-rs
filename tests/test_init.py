@@ -7,7 +7,10 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from habluetooth import get_manager
-from pytest_homeassistant_custom_component.common import mock_restore_cache_with_extra_data
+from pytest_homeassistant_custom_component.common import (
+    async_capture_events,
+    mock_restore_cache_with_extra_data,
+)
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
@@ -29,6 +32,7 @@ if TYPE_CHECKING:
 WEIGHT = "sensor.smart_scale_s200_eeff_weight"
 LIVE = "sensor.smart_scale_s200_eeff_live_weight"
 LAST = "sensor.smart_scale_s200_eeff_last_weigh_in"
+EVENT = "event.smart_scale_s200_eeff_weigh_in"
 
 
 def state_of(hass: HomeAssistant, entity_id: str) -> State:
@@ -81,6 +85,30 @@ async def test_weigh_in(
         "Smart Scale S200",
         "MJTZC02YM",
     )
+
+
+async def test_event_fires_on_every_weigh_in(
+    hass: HomeAssistant,
+    connect: Callable[[Script], FakeClient],
+    no_cooldown: None,  # noqa: ARG001
+) -> None:
+    """The weigh-in event fires each time, even when the weight repeats."""
+    connect([("final", 7000)])
+    connect([("final", 7000)])
+    events = async_capture_events(hass, "state_changed")
+    await setup(hass, config_entry())
+    await weigh(hass)
+    # The scale sleeps, then wakes again (HA forgets it in between).
+    forget_scale()
+    await weigh(hass)
+    fired = [e for e in events if e.data["entity_id"] == EVENT and e.data["new_state"]]
+    assert len(fired) == 2
+    state = hass.states.get(EVENT)
+    assert state is not None
+    assert state.attributes["event_type"] == "weigh_in"
+    assert state.attributes["weight"] == 70.0
+    assert state.attributes["unit_of_measurement"] == "kg"
+    assert state.attributes["source"] == "final"
 
 
 def forget_scale() -> None:

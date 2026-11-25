@@ -167,3 +167,10 @@ async def setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
+
+
+@pytest.fixture
+def no_cooldown() -> Generator[None]:
+    """Let the coordinator weigh again straight away."""
+    with patch("custom_components.miscale.coordinator.POLL_COOLDOWN_SECONDS", 0):
+        yield
