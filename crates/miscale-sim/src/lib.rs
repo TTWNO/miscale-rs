@@ -31,8 +31,8 @@ const MAX_PROFILE: usize = 255;
 /// Sequence number of the device's first streamed frame.
 const FIRST_DEVICE_SEQ: u16 = 7;
 
-/// Device timestamp written into final readings.
-const DEVICE_TIME: &str = "1764000000";
+/// The scale's clock (seconds since the Unix epoch) unless a test sets it.
+pub const DEFAULT_DEVICE_TIME: u32 = 1_764_000_000;
 
 /// One thing the simulated scale sends after the profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,6 +58,8 @@ pub struct SimConfig {
     pub echo_hello: bool,
     /// Whether to refuse every login with `23 00 00 00`.
     pub refuse_login: bool,
+    /// The timestamp the scale writes into final readings.
+    pub device_time: u32,
 }
 
 impl fmt::Debug for SimConfig {
@@ -65,6 +67,7 @@ impl fmt::Debug for SimConfig {
         f.debug_struct("SimConfig")
             .field("echo_hello", &self.echo_hello)
             .field("refuse_login", &self.refuse_login)
+            .field("device_time", &self.device_time)
             .finish_non_exhaustive()
     }
 }
@@ -78,6 +81,7 @@ impl SimConfig {
             dev_rand,
             echo_hello: true,
             refuse_login: false,
+            device_time: DEFAULT_DEVICE_TIME,
         }
     }
 }
@@ -364,7 +368,7 @@ impl SimScale {
             return;
         };
         let mut frame = heapless::Vec::<u8, 255>::new();
-        if encode_step(step, self.seq, &mut frame).is_some() {
+        if encode_step(step, self.seq, self.config.device_time, &mut frame).is_some() {
             self.seq = self.seq.wrapping_add(1);
             let _sent: Result<(), _> = spec.send(&frame);
         }
@@ -372,7 +376,12 @@ impl SimScale {
 }
 
 /// Encodes a script step as a plaintext spec frame.
-fn encode_step(step: Step, seq: u16, out: &mut heapless::Vec<u8, 255>) -> Option<()> {
+fn encode_step(
+    step: Step,
+    seq: u16,
+    device_time: u32,
+    out: &mut heapless::Vec<u8, 255>,
+) -> Option<()> {
     let mut body = heapless::Vec::<u8, 251>::new();
     match step {
         Step::Live(centi) => {
@@ -386,7 +395,7 @@ fn encode_step(step: Step, seq: u16, out: &mut heapless::Vec<u8, 255>) -> Option
         }
         Step::Final(centi) => {
             let mut text = heapless::String::<48>::new();
-            fmt::write(&mut text, format_args!("0,0,{centi},2,{DEVICE_TIME}")).ok()?;
+            fmt::write(&mut text, format_args!("0,0,{centi},2,{device_time}")).ok()?;
             body.extend_from_slice(&[0x09, 0x02]).ok()?;
             push_string(&mut body, text.as_bytes()).ok()?;
         }
