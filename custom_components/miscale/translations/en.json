@@ -1,0 +1,33 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Device is already configured",
+      "no_devices_found": "No devices found on the network",
+      "not_supported": "This device is not a Xiaomi Smart Scale S200."
+    },
+    "error": {
+      "invalid_token": "The token must be exactly 24 hexadecimal digits."
+    },
+    "flow_title": "{name}",
+    "step": {
+      "token": {
+        "data": {
+          "token": "Token"
+        },
+        "data_description": {
+          "token": "The scale's 24-digit login token, extracted once from a Xiaomi account. Nothing else is ever needed: the integration talks to the scale directly."
+        },
+        "description": "Enter the login token of {name}."
+      },
+      "user": {
+        "data": {
+          "address": "Device"
+        },
+        "data_description": {
+          "address": "The scale to set up. Step on it or tap it so it is awake."
+        },
+        "description": "Choose a device to set up"
+      }
+    }
+  }
+}

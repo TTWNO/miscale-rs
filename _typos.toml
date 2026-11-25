@@ -4,3 +4,7 @@ extend-ignore-re = ["\\b[0-9a-fA-F]{2}( [0-9a-fA-F]{2})+\\b", "\\b[0-9a-fA-F]{8,
 
 [files]
 extend-exclude = ["Cargo.lock", "uv.lock"]
+
+[default.extend-words]
+# Home Assistant's conventional name for its core object.
+hass = "hass"

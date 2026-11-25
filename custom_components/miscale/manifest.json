@@ -1,0 +1,21 @@
+{
+  "domain": "miscale",
+  "name": "Xiaomi Smart Scale S200 (local)",
+  "bluetooth": [
+    {
+      "connectable": true,
+      "service_data_uuid": "0000fe95-0000-1000-8000-00805f9b34fb"
+    }
+  ],
+  "categories": ["health_wellbeing"],
+  "codeowners": ["@TTWNO"],
+  "config_flow": true,
+  "connectivity": ["bluetooth"],
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/TTWNO/miscale-rs",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/TTWNO/miscale-rs/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

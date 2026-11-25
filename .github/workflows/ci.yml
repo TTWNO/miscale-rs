@@ -227,3 +227,33 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: make py
+
+  # The two Home Assistant validators below run only on GitHub: hassfest's
+  # action starts a container of its own (docker-in-docker), and HACS's
+  # validation queries the GitHub API about the repository. Neither can run
+  # under act without handing the job the container daemon's socket.
+  hassfest:
+    name: Home Assistant hassfest
+    if: github.actor != 'nektos/act'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: home-assistant/actions/hassfest@07f46fd2e19967768b5fd3000f91f857452b767c # 2026.11.0
+
+  hacs:
+    name: HACS validation
+    if: github.actor != 'nektos/act'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
+        with:
+          category: integration
+          comment: "false"
+          # The brands repository is for core integrations.
+          ignore: brands

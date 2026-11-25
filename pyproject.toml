@@ -1,6 +1,7 @@
-# Development environment for the Python side: the native module's tests now,
-# and the Home Assistant integration. Not a package itself; the native module
-# is built from crates/miscale-py with maturin.
+# Development environment for the Python side: the native module's tests and
+# the Home Assistant integration in custom_components/miscale. Not a package
+# itself: the integration is copied into Home Assistant as is, and the native
+# module is built from crates/miscale-py with maturin.
 
 [project]
 name = "miscale-rs-dev"
@@ -12,14 +13,29 @@ dependencies = []
 
 [dependency-groups]
 dev = ["maturin==1.16.0", "mypy==2.4.1", "pytest==9.0.3", "ruff==0.17.6"]
+ha = [
+  "pytest-homeassistant-custom-component==0.13.375",
+  # Requirements of the HA components the integration depends on
+  # (bluetooth, usb), pinned as in Home Assistant 2026.10.4's manifests.
+  "aiousbwatcher==1.1.2",
+  "bleak==3.0.2",
+  "bleak-retry-connector==4.7.1",
+  "bluetooth-adapters==2.4.0",
+  "bluetooth-auto-recovery==1.6.4",
+  "bluetooth-data-tools==1.29.24",
+  "dbus-fast==5.0.22",
+  "habluetooth==7.1.2",
+  "serialx==1.11.0",
+]
 
 [tool.uv]
 package = false
+default-groups = ["dev", "ha"]
 
 [tool.ruff]
 target-version = "py314"
 line-length = 100
-src = ["crates/miscale-py/tests"]
+src = ["custom_components", "tests", "crates/miscale-py/tests"]
 
 [tool.ruff.lint]
 # Everything, then a short list of deliberate exceptions.
@@ -30,14 +46,22 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"crates/miscale-py/tests/**" = [
+"{tests,crates/miscale-py/tests}/**" = [
   "S101",    # pytest is built on assert
   "PLR2004", # expected values in tests are literals by design
+  "SLF001",  # tests may reach into the objects they test
   "S105",    # the only "tokens" in tests are published, synthetic test vectors
 ]
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
+
+[tool.ruff.lint.isort]
+# Home Assistant's import layout.
+force-sort-within-sections = true
+known-first-party = ["custom_components.miscale", "homeassistant"]
+combine-as-imports = true
+split-on-trailing-comma = false
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -60,9 +84,21 @@ enable_error_code = [
 ]
 # The native module's type stub lives next to its crate.
 mypy_path = "crates/miscale-py"
-files = ["crates/miscale-py/tests"]
+files = ["custom_components", "tests", "crates/miscale-py/tests"]
+
+[[tool.mypy.overrides]]
+# Typed inline, but ships no py.typed marker.
+module = ["pytest_homeassistant_custom_component.*"]
+follow_untyped_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["crates/miscale-py/tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests", "crates/miscale-py/tests"]
 addopts = "--strict-markers --strict-config"
-filterwarnings = ["error"]
+filterwarnings = [
+  "error",
+  # Raised by Home Assistant's own http component (aiohttp app and request
+  # keys), not by this integration.
+  "ignore::aiohttp.web_exceptions.NotAppKeyWarning",
+]
