@@ -13,7 +13,8 @@ deliberately strict.
   this is on you.
 - **No I/O below the integration.** Every Rust crate except the PyO3 binding
   is `#![no_std]`, allocation-free and sans-io: bytes in, bytes and events
-  out. The caller supplies time and randomness.
+  out. The caller supplies time and randomness. Only
+  `custom_components/miscale/runner.py` touches Bluetooth.
 - **No panics.** Library code must not panic on any input. Errors become
   events; capacities are checked; indexing and arithmetic are checked.
 
@@ -46,6 +47,20 @@ on future compilers that add lints while still gating merges.
     (say what the test pins down).
   - `host_endian_bytes`: wire formats are always explicit about endianness.
 - `unsafe_code` is forbidden.
+
+### Python
+
+- ruff with every rule selected; the few exceptions are listed, with
+  their reasons, in `pyproject.toml`. Tests may assert and use literal
+  values.
+- mypy `--strict`, plus explicit `@override`, exhaustive matches and the
+  other optional error codes listed in `pyproject.toml`. The native
+  module's type stub is `crates/miscale-py/miscale_native.pyi`; keep it in
+  step with `src/lib.rs`.
+- pytest treats warnings as errors.
+- Integration tests run the real code path against the simulated scale
+  (`miscale_native.SimulatedScale`, built with the `sim` feature) behind
+  a fake Bluetooth client. Test tokens are published, synthetic vectors.
 
 ## Commits
 
