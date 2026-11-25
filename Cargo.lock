@@ -275,7 +275,12 @@ name = "miscale"
 version = "0.1.0"
 dependencies = [
  "heapless",
+ "mible-auth",
+ "mible-crypto",
  "mible-spec",
+ "mible-transport",
+ "miscale-sim",
+ "proptest",
 ]
 
 [[package]]
