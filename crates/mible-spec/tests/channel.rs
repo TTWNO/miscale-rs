@@ -1,7 +1,7 @@
 //! App ↔ device spec channels wired back to back.
 #![cfg(test)]
 
-use mible_crypto::session::SessionError;
+use mible_crypto::CipherError;
 use mible_crypto::{LoginKeys, Role, SessionCipher, Token};
 use mible_spec::{SpecChannel, SpecError, SpecFrame, SpecProgress};
 use mible_transport::Channel;
@@ -149,7 +149,7 @@ fn tampered_message_fails_the_channel() {
     let mut data = tx.data.to_vec();
     let last = data.len() - 1;
     data[last] ^= 1;
-    let failed = SpecProgress::Failed(SpecError::Crypto(SessionError::Crypto));
+    let failed = SpecProgress::Failed(SpecError::Crypto(CipherError::Crypto));
     assert_eq!(
         app.handle_notify(Channel::SpecDown, &data),
         failed,
@@ -163,7 +163,7 @@ fn tampered_message_fails_the_channel() {
     assert!(app.poll_transmit().is_none(), "silent after failure");
     assert_eq!(
         app.send(b"x"),
-        Err(SpecError::Crypto(SessionError::Crypto)),
+        Err(SpecError::Crypto(CipherError::Crypto)),
         "send refused"
     );
 }

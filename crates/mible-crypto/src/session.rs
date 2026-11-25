@@ -33,7 +33,7 @@ pub const OVERHEAD: usize = COUNTER_LEN + TAG_LEN;
 
 /// Which end of the session this cipher serves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
+#[expect(clippy::exhaustive_enums, reason = "a session has exactly two ends")]
 pub enum Role {
     /// The app: seals with the app key, opens with the device key.
     App,
@@ -109,15 +109,15 @@ impl SessionCipher {
     ///
     /// # Errors
     ///
-    /// [`SessionError::BufferTooSmall`] if `out` cannot hold
-    /// `plaintext.len() + OVERHEAD` bytes; [`SessionError::Crypto`] if the
+    /// [`CipherError::BufferTooSmall`] if `out` cannot hold
+    /// `plaintext.len() + OVERHEAD` bytes; [`CipherError::Crypto`] if the
     /// cipher refuses (it does not for messages this short).
     pub fn seal<const N: usize>(
         &self,
         counter: u16,
         plaintext: &[u8],
         out: &mut heapless::Vec<u8, N>,
-    ) -> Result<(), SessionError> {
+    ) -> Result<(), CipherError> {
         out.clear();
         out.extend_from_slice(&counter.to_le_bytes())
             .map_err(buffer_too_small)?;
@@ -128,7 +128,7 @@ impl SessionCipher {
             self.seal
                 .cipher
                 .encrypt_inout_detached(&nonce, &[], body.into())
-                .map_err(|ccm::Error| SessionError::Crypto)?
+                .map_err(|ccm::Error| CipherError::Crypto)?
         };
         out.extend_from_slice(&tag).map_err(buffer_too_small)
     }
@@ -138,22 +138,22 @@ impl SessionCipher {
     ///
     /// # Errors
     ///
-    /// [`SessionError::TooShort`] if `message` cannot hold a counter and a
-    /// tag, [`SessionError::BufferTooSmall`] if `out` cannot hold the
-    /// plaintext, and [`SessionError::Crypto`] if authentication fails.
+    /// [`CipherError::TooShort`] if `message` cannot hold a counter and a
+    /// tag, [`CipherError::BufferTooSmall`] if `out` cannot hold the
+    /// plaintext, and [`CipherError::Crypto`] if authentication fails.
     pub fn open<const N: usize>(
         &self,
         message: &[u8],
         out: &mut heapless::Vec<u8, N>,
-    ) -> Result<u16, SessionError> {
+    ) -> Result<u16, CipherError> {
         out.clear();
         let (counter, rest) = message
             .split_first_chunk::<COUNTER_LEN>()
-            .ok_or(SessionError::TooShort)?;
+            .ok_or(CipherError::TooShort)?;
         let counter = u16::from_le_bytes(*counter);
         let (ciphertext, tag) = rest
             .split_last_chunk::<TAG_LEN>()
-            .ok_or(SessionError::TooShort)?;
+            .ok_or(CipherError::TooShort)?;
         let tag = Array::<u8, U4>::from(*tag);
         out.extend_from_slice(ciphertext)
             .map_err(buffer_too_small)?;
@@ -165,21 +165,21 @@ impl SessionCipher {
             .is_err()
         {
             out.clear();
-            return Err(SessionError::Crypto);
+            return Err(CipherError::Crypto);
         }
         Ok(counter)
     }
 }
 
-/// Maps a buffer-capacity failure to [`SessionError::BufferTooSmall`].
-const fn buffer_too_small(_: heapless::CapacityError) -> SessionError {
-    SessionError::BufferTooSmall
+/// Maps a buffer-capacity failure to [`CipherError::BufferTooSmall`].
+const fn buffer_too_small(_: heapless::CapacityError) -> CipherError {
+    CipherError::BufferTooSmall
 }
 
 /// Why a message could not be sealed or opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub enum SessionError {
+pub enum CipherError {
     /// The output buffer is too small.
     BufferTooSmall,
     /// The message is shorter than a counter plus a tag.
@@ -188,7 +188,7 @@ pub enum SessionError {
     Crypto,
 }
 
-impl fmt::Display for SessionError {
+impl fmt::Display for CipherError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::BufferTooSmall => "output buffer too small",
@@ -198,4 +198,4 @@ impl fmt::Display for SessionError {
     }
 }
 
-impl core::error::Error for SessionError {}
+impl core::error::Error for CipherError {}

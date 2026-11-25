@@ -8,7 +8,7 @@
 
 use core::fmt;
 
-use mible_crypto::{Role, SessionCipher, SessionError};
+use mible_crypto::{CipherError, Role, SessionCipher};
 use mible_transport::frame::Frame;
 use mible_transport::rx::{ReceiveError, ReceiveProgress, Receiver, SinglePolicy};
 use mible_transport::tx::{SendError, SendProgress, Sender};
@@ -58,7 +58,7 @@ pub enum SpecError {
     /// The plaintext is too long to send.
     TooLong,
     /// Sealing or opening failed (for opening: wrong keys or tampering).
-    Crypto(SessionError),
+    Crypto(CipherError),
     /// Sending a parcel failed.
     Send(SendError),
     /// Receiving a parcel failed.
@@ -143,7 +143,7 @@ impl SpecChannel {
     pub const fn outgoing(&self) -> Channel {
         match self.role {
             Role::Device => Channel::SpecDown,
-            Role::App | _ => Channel::SpecUp,
+            Role::App => Channel::SpecUp,
         }
     }
 
@@ -152,7 +152,7 @@ impl SpecChannel {
     pub const fn incoming(&self) -> Channel {
         match self.role {
             Role::Device => Channel::SpecUp,
-            Role::App | _ => Channel::SpecDown,
+            Role::App => Channel::SpecDown,
         }
     }
 

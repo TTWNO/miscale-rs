@@ -14,5 +14,5 @@ pub mod session;
 pub mod token;
 
 pub use login::{LoginKeys, ProofMismatch};
-pub use session::{Role, SessionCipher, SessionError};
+pub use session::{CipherError, Role, SessionCipher};
 pub use token::{Token, TokenParseError};

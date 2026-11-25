@@ -6,7 +6,7 @@
 //! using the nonce layout `iv ‖ 00000000 ‖ counter (u32 LE)`.
 #![cfg(test)]
 
-use mible_crypto::{LoginKeys, ProofMismatch, Role, SessionCipher, SessionError, Token};
+use mible_crypto::{CipherError, LoginKeys, ProofMismatch, Role, SessionCipher, Token};
 
 /// Decodes a hex string.
 fn hex(text: &str) -> Vec<u8> {
@@ -157,7 +157,7 @@ fn session_rejects() {
     tampered[3] ^= 0x80;
     assert_eq!(
         app.open(&tampered, &mut plain),
-        Err(SessionError::Crypto),
+        Err(CipherError::Crypto),
         "ciphertext"
     );
     assert!(plain.is_empty(), "cleared on failure");
@@ -165,34 +165,34 @@ fn session_rejects() {
     recounted[0] = 2;
     assert_eq!(
         app.open(&recounted, &mut plain),
-        Err(SessionError::Crypto),
+        Err(CipherError::Crypto),
         "counter"
     );
     assert_eq!(
         device.open(&wire, &mut plain),
-        Err(SessionError::Crypto),
+        Err(CipherError::Crypto),
         "own direction"
     );
     assert_eq!(
         app.open(&wire[..5], &mut plain),
-        Err(SessionError::TooShort),
+        Err(CipherError::TooShort),
         "truncated"
     );
     assert_eq!(
         app.open(&[], &mut plain),
-        Err(SessionError::TooShort),
+        Err(CipherError::TooShort),
         "empty"
     );
 
     let mut tiny = heapless::Vec::<u8, 4>::new();
     assert_eq!(
         app.open(&wire, &mut tiny),
-        Err(SessionError::BufferTooSmall),
+        Err(CipherError::BufferTooSmall),
         "small out"
     );
     assert_eq!(
         device.seal(1, b"hello", &mut tiny),
-        Err(SessionError::BufferTooSmall),
+        Err(CipherError::BufferTooSmall),
         "small seal"
     );
 }
