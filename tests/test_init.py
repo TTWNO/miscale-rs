@@ -13,6 +13,7 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.miscale.const import CONF_TOKEN, DOMAIN
+from custom_components.miscale.runner import new_session
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
     ATTR_DEVICE_CLASS,
@@ -23,7 +24,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .conftest import ADDRESS, TOKEN, config_entry, inject, service_info, setup
+from .conftest import ADDRESS, BEACON_KEY, MID, TOKEN, config_entry, inject, service_info, setup
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -119,6 +120,17 @@ def forget_scale() -> None:
     manager._connectable_history.pop(ADDRESS, None)
 
 
+async def test_credentials_reach_the_session(
+    hass: HomeAssistant, connect: Callable[[Script], FakeClient]
+) -> None:
+    """Each weigh-in logs in with the token and tells the scale the account id."""
+    connect([("final", 7000)])
+    with patch("custom_components.miscale.coordinator.new_session", wraps=new_session) as started:
+        await setup(hass, config_entry())
+        await weigh(hass)
+    started.assert_called_once_with(TOKEN, MID)
+
+
 async def test_cooldown(hass: HomeAssistant, connect: Callable[[Script], FakeClient]) -> None:
     """Advertisements right after a weigh-in do not reconnect."""
     connect([("final", 7000)])
@@ -184,6 +196,8 @@ async def test_unload(hass: HomeAssistant) -> None:
     assert entry.state is ConfigEntryState.NOT_LOADED
 
 
-def test_token_fixture_is_synthetic() -> None:
-    """The tests only ever use miauth's published vector."""
+def test_fixtures_are_synthetic() -> None:
+    """The tests only ever use miauth's published token and made-up values."""
     assert TOKEN == "0cf5615003810d89c233a12a"
+    assert BEACON_KEY == "5a" * 16
+    assert MID == "4242"

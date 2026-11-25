@@ -5,6 +5,7 @@ from typing import Final
 DOMAIN: Final = "miscale"
 
 CONF_TOKEN: Final = "token"  # noqa: S105 - a config key, not a secret
+CONF_BEACON_KEY: Final = "beacon_key"
 CONF_MID: Final = "mid"
 
 MANUFACTURER: Final = "Xiaomi"

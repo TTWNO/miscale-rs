@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_ADDRESS
 
-from .const import CONF_MID, CONF_TOKEN
+from .const import CONF_BEACON_KEY, CONF_MID, CONF_TOKEN
 from .native import native
 
 if TYPE_CHECKING:
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from .coordinator import MiScaleConfigEntry
 
-TO_REDACT = {CONF_TOKEN, CONF_MID, CONF_ADDRESS, "unique_id", "title"}
+TO_REDACT = {CONF_TOKEN, CONF_BEACON_KEY, CONF_MID, CONF_ADDRESS, "unique_id", "title"}
 
 
 async def async_get_config_entry_diagnostics(

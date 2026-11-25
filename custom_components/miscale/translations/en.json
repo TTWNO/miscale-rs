@@ -4,31 +4,56 @@
       "already_configured": "Device is already configured",
       "no_devices_found": "No devices found on the network",
       "not_supported": "This device is not a Xiaomi Smart Scale S200.",
-      "reauth_successful": "Re-authentication was successful"
+      "reauth_successful": "Re-authentication was successful",
+      "reconfigure_successful": "Re-configuration was successful"
     },
     "error": {
-      "invalid_token": "The token must be exactly 24 hexadecimal digits."
+      "invalid_beacon_key": "The beacon key must be exactly 32 hexadecimal digits.",
+      "invalid_mid": "The account ID must be 1 to 20 decimal digits.",
+      "invalid_token": "The token must be exactly 24 hexadecimal digits.",
+      "wrong_beacon_key": "This beacon key does not decrypt the scale's advertisements."
     },
     "flow_title": "{name}",
     "step": {
+      "credentials": {
+        "data": {
+          "token": "Token",
+          "beacon_key": "Beacon key",
+          "mid": "Account ID"
+        },
+        "data_description": {
+          "token": "The scale's 24-digit login token (TOKEN in the token extractor's output). It lets Home Assistant log in to the scale and read each weigh-in.",
+          "beacon_key": "The scale's 32-digit beacon key (BLE KEY in the token extractor's output). It decrypts the scale's advertisements and proves they come from this scale.",
+          "mid": "The numeric ID of the Xiaomi account the scale is paired with. The scale is told it with every weigh-in."
+        },
+        "description": "Enter the credentials of {name}. All three come from the Xiaomi account the scale is paired with, extracted once; after that the integration talks to the scale directly."
+      },
       "reauth_confirm": {
         "data": {
-          "token": "Token"
+          "token": "Token",
+          "beacon_key": "Beacon key",
+          "mid": "Account ID"
         },
         "data_description": {
-          "token": "The scale's 24-digit login token."
+          "token": "The scale's 24-digit login token (TOKEN in the token extractor's output). It lets Home Assistant log in to the scale and read each weigh-in.",
+          "beacon_key": "The scale's 32-digit beacon key (BLE KEY in the token extractor's output). It decrypts the scale's advertisements and proves they come from this scale.",
+          "mid": "The numeric ID of the Xiaomi account the scale is paired with. The scale is told it with every weigh-in."
         },
-        "description": "The scale rejected the stored token. Enter the current one.",
+        "description": "The scale rejected the stored token or beacon key. Enter the current credentials: they change when the scale is reset and paired again.",
         "title": "Reauthenticate integration"
       },
-      "token": {
+      "reconfigure": {
         "data": {
-          "token": "Token"
+          "token": "Token",
+          "beacon_key": "Beacon key",
+          "mid": "Account ID"
         },
         "data_description": {
-          "token": "The scale's 24-digit login token, extracted once from a Xiaomi account. Nothing else is ever needed: the integration talks to the scale directly."
+          "token": "The scale's 24-digit login token (TOKEN in the token extractor's output). It lets Home Assistant log in to the scale and read each weigh-in.",
+          "beacon_key": "The scale's 32-digit beacon key (BLE KEY in the token extractor's output). It decrypts the scale's advertisements and proves they come from this scale.",
+          "mid": "The numeric ID of the Xiaomi account the scale is paired with. The scale is told it with every weigh-in."
         },
-        "description": "Enter the login token of {name}."
+        "description": "Enter the scale's current credentials."
       },
       "user": {
         "data": {
@@ -66,21 +91,6 @@
   "exceptions": {
     "no_connectable_device": {
       "message": "No connectable Bluetooth adapter or proxy is in range of {address}."
-    }
-  },
-  "options": {
-    "error": {
-      "invalid_mid": "The account id must be 1 to 20 decimal digits."
-    },
-    "step": {
-      "init": {
-        "data": {
-          "mid": "Account id (mid)"
-        },
-        "data_description": {
-          "mid": "Xiaomi account id sent to the scale with each weigh-in. Leave empty unless the scale ignores the default."
-        }
-      }
     }
   }
 }

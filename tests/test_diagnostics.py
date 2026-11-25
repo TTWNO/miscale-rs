@@ -1,4 +1,4 @@
-"""Diagnostics never contain the token or identifiers."""
+"""Diagnostics never contain the credentials or identifiers."""
 
 from __future__ import annotations
 
@@ -9,9 +9,7 @@ from pytest_homeassistant_custom_component.components.diagnostics import (
     get_diagnostics_for_config_entry,
 )
 
-from custom_components.miscale.const import CONF_MID
-
-from .conftest import ADDRESS, TOKEN, config_entry, setup
+from .conftest import ADDRESS, BEACON_KEY, MID, TOKEN, config_entry, setup
 
 if TYPE_CHECKING:
     from pytest_homeassistant_custom_component.typing import ClientSessionGenerator
@@ -22,12 +20,12 @@ if TYPE_CHECKING:
 async def test_diagnostics_are_redacted(
     hass: HomeAssistant, hass_client: ClientSessionGenerator
 ) -> None:
-    """The token, account id and address are redacted."""
-    entry = config_entry(**{CONF_MID: "4242"})
+    """The token, beacon key, account id and address are redacted."""
+    entry = config_entry()
     await setup(hass, entry)
     diagnostics = await get_diagnostics_for_config_entry(hass, hass_client, entry)
     text = json.dumps(diagnostics)
-    for secret in (TOKEN, "4242", ADDRESS):
+    for secret in (TOKEN, BEACON_KEY, MID, ADDRESS):
         assert secret not in text
     assert isinstance(diagnostics, dict)
     data = diagnostics["data"]

@@ -53,6 +53,7 @@ ignore = [
   "PLR2004", # expected values in tests are literals by design
   "SLF001",  # tests may reach into the objects they test
   "S105",    # the only "tokens" in tests are published, synthetic test vectors
+  "S106",    # likewise when passed as an argument
 ]
 
 [tool.ruff.lint.pydocstyle]

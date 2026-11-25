@@ -114,7 +114,7 @@ class MiScaleCoordinator(ActiveBluetoothDataUpdateCoordinator[MiScaleData]):
         self._running = True
         self.data = replace(self.data, live_kg=None)
         try:
-            session = new_session(self._entry.data[CONF_TOKEN], self._entry.options.get(CONF_MID))
+            session = new_session(self._entry.data[CONF_TOKEN], self._entry.data[CONF_MID])
             runner: SessionRunner | None = None
 
             def disconnected(_client: BleakClientWithServiceCache) -> None:

@@ -129,7 +129,7 @@ class SessionRunner:
         return None
 
 
-def new_session(token: str, mid: str | None) -> WeighSession:
+def new_session(token: str, mid: str) -> WeighSession:
     """Start a session now, with a fresh random from the OS."""
     return native.WeighSession(
         token,

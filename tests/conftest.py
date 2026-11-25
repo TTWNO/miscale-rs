@@ -17,7 +17,13 @@ import miscale_native
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.miscale.const import CONF_TOKEN, DOMAIN, MIBEACON_UUID
+from custom_components.miscale.const import (
+    CONF_BEACON_KEY,
+    CONF_MID,
+    CONF_TOKEN,
+    DOMAIN,
+    MIBEACON_UUID,
+)
 from homeassistant import loader
 from homeassistant.const import CONF_ADDRESS
 
@@ -29,6 +35,9 @@ if TYPE_CHECKING:
 
 # miauth's published test vector: a synthetic token, not a real device's.
 TOKEN = "0cf5615003810d89c233a12a"
+# A synthetic beacon key and account id.
+BEACON_KEY = "5a" * 16
+MID = "4242"
 ADDRESS = "AA:BB:CC:DD:EE:FF"
 DEV_RAND = bytes([0x90] * 16)
 
@@ -97,14 +106,18 @@ def inject(info: BluetoothServiceInfoBleak) -> None:
     get_manager().scanner_adv_received(info)
 
 
-def config_entry(**options: str) -> MockConfigEntry:
+def credentials(**changes: str) -> dict[str, str]:
+    """Return the fake scale's credentials, as entered in the form."""
+    return {CONF_TOKEN: TOKEN, CONF_BEACON_KEY: BEACON_KEY, CONF_MID: MID, **changes}
+
+
+def config_entry() -> MockConfigEntry:
     """Build a config entry for the fake scale."""
     return MockConfigEntry(
         domain=DOMAIN,
         unique_id=ADDRESS,
         title="Smart Scale S200 EEFF",
-        data={CONF_ADDRESS: ADDRESS, CONF_TOKEN: TOKEN},
-        options=options,
+        data={CONF_ADDRESS: ADDRESS, **credentials()},
     )
 
 

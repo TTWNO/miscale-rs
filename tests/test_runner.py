@@ -11,7 +11,7 @@ import pytest
 
 from custom_components.miscale.runner import SessionRunner, char_uuid, new_session
 
-from .conftest import DEV_RAND, TOKEN, FakeClient
+from .conftest import DEV_RAND, MID, TOKEN, FakeClient
 
 
 def test_char_uuid() -> None:
@@ -23,7 +23,7 @@ async def test_run_to_final() -> None:
     """The runner shuttles bytes until the final weight, in order."""
     scale = miscale_native.SimulatedScale(TOKEN, DEV_RAND, [("live", 5000), ("final", 5545)])
     events: list[miscale_native.Event] = []
-    finished = await SessionRunner(FakeClient(scale), new_session(TOKEN, None), events.append).run()
+    finished = await SessionRunner(FakeClient(scale), new_session(TOKEN, MID), events.append).run()
     assert finished.kind == "finished"
     assert (finished.outcome, finished.source, finished.weight_centi_kg) == (
         "measured",
@@ -36,7 +36,7 @@ async def test_run_to_final() -> None:
 async def test_disconnect_aborts() -> None:
     """A dropped link ends the session as aborted."""
     scale = miscale_native.SimulatedScale(TOKEN, DEV_RAND, [], echo_hello=False)
-    runner = SessionRunner(FakeClient(scale), new_session(TOKEN, None), lambda _event: None)
+    runner = SessionRunner(FakeClient(scale), new_session(TOKEN, MID), lambda _event: None)
     task = asyncio.create_task(runner.run())
     await asyncio.sleep(0)
     runner.notify_disconnected()
@@ -60,7 +60,7 @@ class FailingClient(FakeClient):
 async def test_write_error_propagates() -> None:
     """A failed write aborts the session and reaches the coordinator."""
     scale = miscale_native.SimulatedScale(TOKEN, DEV_RAND, [])
-    session = new_session(TOKEN, None)
+    session = new_session(TOKEN, MID)
     with pytest.raises(BleakError, match="link lost"):
         await SessionRunner(FailingClient(scale), session, lambda _event: None).run()
     assert session.is_finished
@@ -70,7 +70,7 @@ async def test_refused_login() -> None:
     """A refusal is reported with a machine-readable reason."""
     scale = miscale_native.SimulatedScale(TOKEN, DEV_RAND, [], refuse_login=True)
     finished = await SessionRunner(
-        FakeClient(scale), new_session(TOKEN, None), lambda _event: None
+        FakeClient(scale), new_session(TOKEN, MID), lambda _event: None
     ).run()
     assert (finished.outcome, finished.reason) == ("failed", "refused")
     assert finished.error is not None
