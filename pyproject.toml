@@ -13,6 +13,8 @@ dependencies = []
 
 [dependency-groups]
 dev = ["maturin==1.16.0", "mypy==2.4.1", "pytest==9.0.3", "ruff==0.17.6"]
+# Cross-compiling the release archive (`make dist`).
+dist = ["maturin==1.16.0", "ziglang==0.17.1"]
 ha = [
   "pytest-homeassistant-custom-component==0.13.375",
   # Requirements of the HA components the integration depends on
@@ -35,7 +37,7 @@ default-groups = ["dev", "ha"]
 [tool.ruff]
 target-version = "py314"
 line-length = 100
-src = ["custom_components", "tests", "crates/miscale-py/tests"]
+src = ["custom_components", "tests", "crates/miscale-py/tests", "scripts"]
 
 [tool.ruff.lint]
 # Everything, then a short list of deliberate exceptions.
@@ -84,7 +86,7 @@ enable_error_code = [
 ]
 # The native module's type stub lives next to its crate.
 mypy_path = "crates/miscale-py"
-files = ["custom_components", "tests", "crates/miscale-py/tests"]
+files = ["custom_components", "tests", "crates/miscale-py/tests", "scripts"]
 
 [[tool.mypy.overrides]]
 # Typed inline, but ships no py.typed marker.

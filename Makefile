@@ -5,7 +5,7 @@ CARGO ?= cargo
 MSRV := 1.89
 ACT_SOCKET ?= unix:///run/user/$(shell id -u)/podman/podman.sock
 
-.PHONY: check fmt fmt-check clippy test doc deny machete typos taplo nostd msrv py py-env ci act-image
+.PHONY: check fmt fmt-check clippy test doc deny machete typos taplo nostd msrv py py-env dist dist-smoke ci act-image
 
 check: fmt-check clippy test doc typos taplo deny machete nostd py
 
@@ -46,6 +46,7 @@ msrv:
 # Python: build the native module (with the test simulator) into a uv-managed
 # virtualenv, then lint, type-check and test the Python side.
 UV ?= uv
+CONTAINER ?= podman
 py-env:
 	$(UV) sync --locked
 	$(UV) run --no-sync maturin develop --uv --locked -m crates/miscale-py/Cargo.toml --features sim
@@ -55,6 +56,32 @@ py: py-env
 	$(UV) run --no-sync ruff check
 	$(UV) run --no-sync mypy
 	$(UV) run --no-sync pytest
+
+# Release archive for HACS: the integration plus stripped native modules for
+# x86_64 and aarch64 musl (Home Assistant OS and container), cross-built with
+# zig. Needs the two rustup targets.
+DIST_TARGETS := x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+WHEELS := target/dist-wheels
+dist:
+	rm -rf $(WHEELS)
+	for target in $(DIST_TARGETS); do \
+		$(UV) run --locked --group dist maturin build --release --locked --strip --zig \
+			--target $$target --compatibility musllinux_1_2 \
+			-m crates/miscale-py/Cargo.toml --out $(WHEELS) || exit 1; \
+	done
+	$(UV) run --no-sync python scripts/package.py --out dist/miscale.zip $(WHEELS)/*.whl
+
+# Import each packaged module through the integration's own loader in a bare
+# Alpine CPython, the libc and Python of Home Assistant OS (arm64 needs
+# qemu-user binfmt on an x86_64 host).
+SMOKE_IMAGE ?= docker.io/library/python:3.14-alpine
+SMOKE_PLATFORMS ?= linux/amd64 linux/arm64
+dist-smoke:
+	for platform in $(SMOKE_PLATFORMS); do \
+		$(CONTAINER) run --rm --platform $$platform --network none \
+			-v "$(CURDIR):/src:ro" -w /src $(SMOKE_IMAGE) \
+			python scripts/smoke_bundle.py dist/miscale.zip || exit 1; \
+	done
 
 taplo:
 	taplo fmt --check
@@ -71,6 +98,5 @@ ci:
 	DOCKER_HOST=$(ACT_SOCKET) act $(ACT_FLAGS)
 
 # Build the local runner image used by `make ci` (see .github/act/Containerfile).
-CONTAINER ?= podman
 act-image:
 	$(CONTAINER) build --network host -t $(ACT_IMAGE) -f .github/act/Containerfile .github/act

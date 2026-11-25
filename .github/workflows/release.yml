@@ -1,0 +1,49 @@
+name: Release
+
+# Attaches the HACS archive to a GitHub release when a maintainer publishes
+# one. Nothing runs (and nothing is uploaded anywhere) until that happens.
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+# One build per release; never cancel a release half-way.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    name: Build and attach miscale.zip
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload the release asset
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.14"
+          # No cache in a release build: it must not depend on CI state.
+          enable-cache: false
+      - run: make dist
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - run: make dist-smoke CONTAINER=docker
+      - name: Check the tag matches the version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="$(python3 -c 'import json; print(json.load(open("custom_components/miscale/manifest.json"))["version"])')"
+          test "$TAG" = "v$version"
+      - name: Attach the archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" dist/miscale.zip --repo "$GITHUB_REPOSITORY"
