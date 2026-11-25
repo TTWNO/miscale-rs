@@ -4,9 +4,15 @@
 //! not a real device's). The session-cipher vectors were generated from it
 //! independently with Python's `cryptography` package (`AESCCM`, tag 4),
 //! using the nonce layout `iv ‖ 00000000 ‖ counter (u32 LE)`.
+//!
+//! The beacon vector is a Smart Scale S200 advertisement from xiaomi-ble's
+//! test suite (Apache-2.0; a test device's published key, not ours): it
+//! decrypts to the 62.25 kg weigh-in object the library reports.
 #![cfg(test)]
 
-use mible_crypto::{CipherError, LoginKeys, ProofMismatch, Role, SessionCipher, Token};
+use mible_crypto::{
+    BeaconCipher, BeaconKey, CipherError, LoginKeys, ProofMismatch, Role, SessionCipher, Token,
+};
 
 /// Decodes a hex string.
 fn hex(text: &str) -> Vec<u8> {
@@ -208,4 +214,81 @@ fn debug_is_redacted() {
         "cipher"
     );
     assert_eq!(format!("{:?}", token()), "Token(<redacted>)", "token");
+    assert_eq!(
+        format!("{:?}", BeaconCipher::new(&BeaconKey::new([0xab; 16]))),
+        "BeaconCipher(<redacted>)",
+        "beacon cipher"
+    );
+}
+
+/// The S200 vector's key.
+fn beacon_key() -> BeaconKey {
+    BeaconKey::from_hex("653b1b10e1cb35e4ac5e60fa45f3bf29").unwrap() // gitleaks:allow
+}
+
+/// The S200 vector's nonce: its MAC reversed, product id, frame counter and
+/// extended counter.
+const BEACON_NONCE: [u8; 12] = [
+    0x29, 0xd7, 0x27, 0x6f, 0x7b, 0xd0, 0x04, 0x4c, 0x01, 0x06, 0x00, 0x00,
+];
+
+/// The S200 vector's tag.
+const BEACON_TAG: [u8; 4] = [0x3d, 0x29, 0xc0, 0x44];
+
+/// The S200 vector decrypts to its weigh-in object, and sealing that
+/// object gives the captured bytes back.
+#[test]
+fn beacon_vector() {
+    let cipher = BeaconCipher::new(&beacon_key());
+    let ciphertext = hex("9a80a275939010f0abc4fadc");
+    let plaintext = hex("164e0901511800008a1b1169");
+
+    let mut payload = ciphertext.clone();
+    cipher
+        .open(&BEACON_NONCE, &mut payload, BEACON_TAG)
+        .unwrap();
+    assert_eq!(payload, plaintext, "opened");
+
+    let tag = cipher.seal(&BEACON_NONCE, &mut payload).unwrap();
+    assert_eq!(payload, ciphertext, "sealed");
+    assert_eq!(tag, BEACON_TAG, "tag");
+}
+
+/// A wrong key, nonce or tag fails authentication and zeroes the payload.
+#[test]
+fn beacon_rejects() {
+    let ciphertext = hex("9a80a275939010f0abc4fadc");
+    let check = |cipher: &BeaconCipher, nonce: &[u8; 12], tag: [u8; 4], what: &str| {
+        let mut payload = ciphertext.clone();
+        assert_eq!(
+            cipher.open(nonce, &mut payload, tag),
+            Err(CipherError::Crypto),
+            "{what}"
+        );
+        assert!(payload.iter().all(|&byte| byte == 0), "{what}: zeroed");
+    };
+    let right = BeaconCipher::new(&beacon_key());
+    let wrong = BeaconCipher::new(&BeaconKey::new([0; 16]));
+    let mut next_frame = BEACON_NONCE;
+    next_frame[8] = 0x02;
+    let mut bad_tag = BEACON_TAG;
+    bad_tag[0] ^= 1;
+    check(&wrong, &BEACON_NONCE, BEACON_TAG, "wrong key");
+    check(&right, &next_frame, BEACON_TAG, "wrong frame counter");
+    check(&right, &BEACON_NONCE, bad_tag, "wrong tag");
+}
+
+/// An empty payload still carries a tag that authenticates the nonce.
+#[test]
+fn beacon_empty_payload() {
+    let cipher = BeaconCipher::new(&beacon_key());
+    let tag = cipher.seal(&BEACON_NONCE, &mut []).unwrap();
+    assert_eq!(cipher.open(&BEACON_NONCE, &mut [], tag), Ok(()), "opens");
+    let mut next_frame = BEACON_NONCE;
+    next_frame[8] = 0x02;
+    assert_eq!(
+        cipher.open(&next_frame, &mut [], tag),
+        Err(CipherError::Crypto),
+        "nonce is authenticated"
+    );
 }

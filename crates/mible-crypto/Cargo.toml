@@ -1,6 +1,6 @@
 [package]
 name = "mible-crypto"
-description = "no_std login key schedule, proofs and AES-CCM session cipher for Xiaomi Mi BLE devices"
+description = "no_std login key schedule, proofs, session cipher and MiBeacon cipher for Xiaomi Mi BLE devices"
 readme = "README.md"
 keywords = ["xiaomi", "ble", "aes-ccm", "no-std", "hkdf"]
 categories = ["cryptography", "embedded", "no-std::no-alloc"]
