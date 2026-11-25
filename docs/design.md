@@ -10,9 +10,9 @@ Read the weight from a Xiaomi Smart Scale S200 (MJTZC02YM,
 *standard* HA scale so that any other integration that consumes health data
 (Bodymiscale, statistics, multi-user routers, …) can use it as a source.
 
-The only secret needed at runtime is the device's static 12-byte login token,
-extracted once by the user. No Xiaomi account, app, or server is involved at
-runtime.
+The scale needs what it was paired with: its static 12-byte login token, its
+16-byte beacon key, and the ID of the Xiaomi account it is paired with, all
+extracted once by the user. No Xiaomi app or server is involved at runtime.
 
 ## Non-goals
 
@@ -20,8 +20,9 @@ runtime.
   cloud-issued signature during register (it answers `0x12`), so a local bind
   is impossible. Running register against a real scale could also rotate its
   token. The crates leave room for it but do not implement it.
-- **Passive MiBeacon decoding.** HA's built-in `xiaomi_ble` already does this
-  with a bindkey, and the S200 does not reliably broadcast measurements anyway.
+- **Advertisements as the only source.** The S200 broadcasts a final weight
+  in its encrypted advertisement, but not reliably, so the connection stays
+  the primary path. Broadcasts are a second source (see below).
 - **Body composition.** The S200 has no electrodes; it reports weight only.
 
 ## Why a HACS integration and not an MQTT daemon
@@ -51,7 +52,8 @@ and everything else is Rust behind PyO3.
             │               profile → Live/Final events      │
             │ mible-spec    spec frames + encrypted channel  │
             │ mible-auth    login state machine              │
-            │ mible-crypto  HKDF/HMAC, AES-CCM session cipher│
+            │ mible-beacon  MiBeacon frames, v4/v5 decryption│
+            │ mible-crypto  HKDF/HMAC, AES-CCM ciphers       │
             │ mible-transport  control frames, parcel TX/RX  │
             └────────────────────────────────────────────────┘
                  all #![no_std], no allocator, no I/O, no clock
@@ -60,10 +62,11 @@ and everything else is Rust behind PyO3.
 | crate             | `no_std` | role |
 |-------------------|----------|------|
 | `mible-transport` | yes | control-frame codec; parcel sender / receiver state machines |
-| `mible-crypto`    | yes | login key schedule + proofs; AES-CCM session cipher |
+| `mible-crypto`    | yes | login key schedule + proofs; AES-CCM session cipher; beacon key + MiBeacon cipher |
+| `mible-beacon`    | yes | MiBeacon advertisement codec; v4/v5 payload decryption |
 | `mible-auth`      | yes | login state machine |
 | `mible-spec`      | yes | spec frame codec, TLVs, encrypted spec channel |
-| `miscale`         | yes | S200 weigh session, weight decoding, stabiliser |
+| `miscale`         | yes | S200 weigh session, weight decoding, stabiliser; advertisement reader |
 | `miscale-sim`     | yes | device-side simulator for tests (`publish = false`) |
 | `miscale-py`      | no  | PyO3 bindings (`abi3-py312`); `sim` feature for tests |
 
@@ -117,11 +120,13 @@ let deadline = machine.poll_timeout();         // next wake-up, if any
 
 ### Secrets
 
-- `Token` and the derived session keys are zeroised on drop and their
-  `Debug` output is redacted. Session keys never leave `WeighSession`, so
-  they never cross into Python.
-- The integration stores the token in the config entry, never logs it, and
-  redacts it from diagnostics.
+- `Token`, `BeaconKey` and the derived session keys are zeroised on drop and
+  their `Debug` output is redacted. Session keys never leave `WeighSession`,
+  and the beacon key stays inside a `BeaconReader`, so neither crosses back
+  into Python.
+- The integration stores the credentials in the config entry, never logs
+  them, never sends the token or beacon key back to the browser, and
+  redacts all three from diagnostics.
 - Tests use synthetic keys only (plus the published miauth known-answer
   vectors). Real captures are never committed: they are only meaningful with
   the real token.
@@ -130,7 +135,10 @@ let deadline = machine.poll_timeout();         // next wake-up, if any
 
 - **Discovery.** A manifest Bluetooth matcher on service data UUID FE95. The
   config flow keeps only S200 product ids (`0x45C9`, `0x4C04`, `0x4DCB`) and
-  asks for the token (24 hex digits).
+  asks for the token (24 hex digits), the beacon key (32 hex digits) and
+  the account ID (1–20 digits), all required. When the scale's latest
+  advertisement is encrypted, the beacon key must decrypt it. The same form
+  serves re-authentication and reconfiguration.
 - **Coordinator.** HA's `ActiveBluetoothDataUpdateCoordinator`. An
   advertisement means the scale is awake. The poll itself guards against
   overlap (a running flag plus a cooldown measured from the end of the last
@@ -138,6 +146,14 @@ let deadline = machine.poll_timeout();         // next wake-up, if any
   with `bleak-retry-connector`, drives a `WeighSession` to completion, then
   disconnects (holding the link drains the battery). Entities stay
   available while the scale sleeps.
+- **Broadcasts.** Every advertisement is also read with the beacon key. A
+  weigh-in it carries is recorded (source `broadcast`) without connecting.
+  Both the broadcast and the connection's final reading carry the scale's
+  own timestamp of the weigh-in, so a weigh-in reported both ways is
+  recorded once; a broadcast shortly after an *estimated* weigh-in, and
+  within 1 kg of it, replaces the estimate without a second event. Two
+  encrypted advertisements in a row that do not decrypt start
+  re-authentication, as a wrong token does.
 - **A standard scale.** The weight entity follows HA core's scale integrations
   (`okok_scale`): `sensor` with `device_class: weight`, unit `kg`,
   `state_class: measurement`, `translation_key: weight`. `measurement` puts
@@ -171,10 +187,12 @@ let deadline = machine.poll_timeout();         // next wake-up, if any
 
 ## Known risks
 
-- The profile JSON carries a `mid` (Mi account id). The default here is a
-  neutral value. It is not yet verified on hardware that the scale accepts
-  an arbitrary `mid`, so the config flow lets the user enter theirs (digits
-  only, length-bounded). This is the first thing to check on hardware.
+- The profile JSON carries a `mid` (Mi account ID). Whether the scale checks
+  it is not verified on hardware, so the integration requires the real one
+  rather than risk a scale that silently ignores the session.
+- De-duplication assumes the broadcast and the connection's final reading
+  of one weigh-in carry the same scale timestamp. Both come from the
+  scale's record of the weigh-in; this needs checking on hardware.
 - The scale's idle advertisement never changes, and HA's Bluetooth stack
   skips callbacks for unchanged advertisements. Whether a second wake-up
   soon after the first triggers a poll depends on HA noticing the scale went

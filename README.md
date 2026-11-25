@@ -1,16 +1,16 @@
 # miscale-rs
 
-Local, account-free weight readings from the **Xiaomi Smart Scale S200**
+Local, cloud-free weight readings from the **Xiaomi Smart Scale S200**
 (MJTZC02YM) in Home Assistant.
 
 > **Status:** early. Everything is tested against a simulated scale; the
 > hardware checklist in [`docs/hardware.md`](docs/hardware.md) has not been
 > run yet. Nothing is released.
 
-The S200 only reports a weight over an authenticated, encrypted Bluetooth
-session; its advertisements carry nothing useful. This project implements
-that session in small `no_std`, sans-io Rust crates and drives them from a
-Home Assistant integration. The integration does all Bluetooth I/O through
+The S200 reports each weigh-in over an authenticated, encrypted Bluetooth
+session, and also broadcasts the final weight in an encrypted advertisement,
+though not reliably. This project implements both in small `no_std`, sans-io
+Rust crates and drives them from a Home Assistant integration. The integration does all Bluetooth I/O through
 Home Assistant's own Bluetooth stack, so local adapters and ESPHome
 Bluetooth proxies both work.
 
@@ -30,23 +30,35 @@ behind it, and [`docs/protocol.md`](docs/protocol.md) for the protocol.
 - A Bluetooth adapter or an ESPHome Bluetooth proxy in range of the scale.
   The proxy must allow active connections (`bluetooth_proxy: active: true`)
   and have a free connection slot.
-- The scale's **login token**: 24 hexadecimal digits.
+- The scale's three credentials, all required:
+  - its **token**, 24 hexadecimal digits, to log in to the scale;
+  - its **beacon key**, 32 hexadecimal digits, to decrypt the weigh-ins it
+    broadcasts;
+  - the **account ID** of the Xiaomi account it is paired with, which the
+    scale is told with every weigh-in.
 
-### The token
+### The credentials
 
-The token is created when the scale is first bound to a Xiaomi account, and
-the scale checks a signature from Xiaomi's servers during binding, so it
-cannot be made locally. Get it once, then never again:
+The token and beacon key are created when the scale is first paired with a
+Xiaomi account, and the scale checks a signature from Xiaomi's servers
+during pairing, so they cannot be made locally. Get them once, then never
+again:
 
 1. Add the scale to the Mi Home app once. If the app refuses a scale from
    another region, switch the app's region to match the scale's (for
    example Mainland China).
-2. Read the device's token with a cloud token extractor such as
-   [Xiaomi-cloud-tokens-extractor](https://github.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor).
+2. Read the device's credentials with a cloud token extractor such as
+   [Xiaomi-cloud-tokens-extractor](https://github.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor):
+   the token is its `TOKEN`, the beacon key its `BLE KEY`.
+3. The account ID is the numeric ID of the Xiaomi account you paired the
+   scale with (the account number, not the email address or phone number).
 
-After that, nothing talks to Xiaomi: the integration logs in to the scale
-directly. The token only changes if the scale is factory-reset and bound
-again. If it does change, Home Assistant asks for the new one.
+After that, nothing talks to Xiaomi: the integration talks to the scale
+directly. The token and beacon key only change if the scale is
+factory-reset and paired again. Home Assistant asks for new credentials
+when it notices: the scale rejects the token, or its advertisements stop
+decrypting. To change them yourself, use *Reconfigure* on the
+integration.
 
 ## Installing
 
@@ -64,20 +76,18 @@ archive.
 ## Setting up
 
 Step on the scale or tap it so it advertises. Home Assistant discovers it
-(*Settings → Devices & services*): confirm it and enter the token. From then
-on, every time the scale wakes up, the integration connects, reads the
-weight and disconnects.
-
-Options: **Account id (mid)**, the Xiaomi account id sent to the scale with
-each weigh-in. Leave it empty unless the hardware checklist shows the scale
-needs it.
+(*Settings → Devices & services*): confirm it and enter its token, beacon key
+and account ID. From then on, every time the scale wakes up, the integration
+connects, reads the weight and disconnects. When the scale broadcasts a
+final weight, that is recorded too, without connecting; a weigh-in seen both
+ways is recorded once.
 
 ## Entities
 
 | entity | what it is |
 |--------|------------|
 | Weight | The last measured weight: device class *weight*, kg, state class *measurement*. Kept across restarts. |
-| Weigh-in | An event that fires on every measurement, with `weight`, `unit_of_measurement` and `source` (`final`, or `estimated` when the scale sent no final value). |
+| Weigh-in | An event that fires on every measurement, with `weight`, `unit_of_measurement` and `source`: `final` (read over the connection), `broadcast` (from the scale's advertisement), or `estimated` (the scale sent no final value). |
 | Last weigh-in | When the last weight was measured. |
 | Live weight | The value while the load settles. Disabled by default. |
 
@@ -106,9 +116,10 @@ automation:
 
 ## Privacy and security
 
-- The token never leaves Home Assistant. It is stored in the config entry,
-  never logged, and redacted from diagnostics, along with the account id and
-  the scale's address.
+- The token and beacon key never leave Home Assistant. They are stored in
+  the config entry, never logged, never sent back to the browser, and
+  redacted from diagnostics, along with the account ID and the scale's
+  address.
 - Nothing is sent to Xiaomi or anywhere else at runtime.
 - See [`SECURITY.md`](SECURITY.md) to report a vulnerability.
 
@@ -117,10 +128,11 @@ automation:
 | crate | what it does |
 |-------|--------------|
 | [`mible-transport`](crates/mible-transport) | control-frame and parcel framing |
-| [`mible-crypto`](crates/mible-crypto) | login token, key schedule, proofs, session cipher |
+| [`mible-crypto`](crates/mible-crypto) | login token, key schedule, proofs, session cipher; beacon key and MiBeacon cipher |
+| [`mible-beacon`](crates/mible-beacon) | MiBeacon advertisement codec and v4/v5 decryption |
 | [`mible-auth`](crates/mible-auth) | login state machine |
 | [`mible-spec`](crates/mible-spec) | spec frames and the encrypted spec channel |
-| [`miscale`](crates/miscale) | the S200 weigh session |
+| [`miscale`](crates/miscale) | the S200 weigh session and advertisement reader |
 | [`miscale-sim`](crates/miscale-sim) | a simulated S200, for tests |
 | [`miscale-py`](crates/miscale-py) | Python bindings (PyO3) for Home Assistant |
 

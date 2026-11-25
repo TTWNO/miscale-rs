@@ -8,10 +8,13 @@ reproduce the problem. You will get an acknowledgement within a week.
 
 ## Scope and threat model
 
-- The scale's login token is a long-lived secret: anyone who has it and is in
-  Bluetooth range can read the scale. The integration stores it in Home
-  Assistant's config entry storage, never logs it, and redacts it from
-  diagnostics. A leak of the token through this project is a security bug.
+- The scale's login token and beacon key are long-lived secrets: anyone in
+  Bluetooth range who has the token can read the scale, and anyone with the
+  beacon key can read its broadcasts and forge them. The account ID is
+  personal data. The integration stores all three in Home Assistant's config
+  entry storage, never logs them, never sends the token or beacon key back
+  to the browser, and redacts all three from diagnostics. A leak of any of
+  them through this project is a security bug.
 - Everything received over Bluetooth is untrusted. Malformed or hostile
   input must never crash Home Assistant or panic; it must fail the current
   session cleanly. Parsers are fuzzed.

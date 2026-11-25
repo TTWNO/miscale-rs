@@ -13,6 +13,9 @@ little-endian unless stated otherwise.
   own token, and then proven on hardware by a Python prototype. That
   prototype is the reference this code reproduces. The decisions that
   deviate from it are listed below.
+- The advertisement format and its encryption follow xiaomi-ble, Home
+  Assistant's MiBeacon parser; its captured S200 weigh-in is a known-answer
+  test in `mible-crypto`, `mible-beacon` and `miscale`.
 - Unknown: the full grammar of spec frames (the decoders look for two
   proven patterns), the meaning of most profile fields, and whether the
   scale checks the account id (`mid`) in the profile.
@@ -143,7 +146,8 @@ Decoding, on the raw plaintext:
 
 - **final**: the first string TLV that fits exactly and holds five
   comma-separated decimal numbers. The third is the weight in hundredths of
-  a kilogram. It takes precedence over a live marker.
+  a kilogram, the fifth the scale's timestamp of the weigh-in (Unix
+  seconds by its clock). It takes precedence over a live marker.
 - **live**: the frame ends in `02 30 <u16>`, the weight in hundredths of a
   kilogram.
 - Anything else (device information, for example) is ignored.
@@ -156,6 +160,41 @@ cleared.
 Timing: 10 s of silence ends the login and channel set-up, measured from the
 last notification. Once the profile is acknowledged, the measurement window
 is an absolute 45 s.
+
+## Advertisements (`mible-beacon`, `miscale::beacon`)
+
+The scale advertises MiBeacon service data under UUID `FE95`:
+
+```text
+frame control  u16       flags; version in bits 12–15 (the S200: 5)
+product id     u16       the S200: 0x45C9, 0x4C04 or 0x4DCB
+frame counter  u8        changes with each new advertisement
+MAC            6 bytes   reversed; if flag bit 4
+capability     u8 [u8]   if flag bit 5; an I/O byte if capability bit 5
+objects        …         if flag bit 6; encrypted if flag bit 3:
+                         ciphertext ‖ extended counter (3) ‖ tag (4)
+```
+
+An object is `id (u16) ‖ length (u8) ‖ data`. Encrypted objects (v4/v5) use
+AES-128-CCM under the beacon key, with a 4-byte tag, associated data `11`,
+and the nonce
+
+```text
+MAC (6, reversed) ‖ product id (u16) ‖ frame counter ‖ extended counter (3)
+```
+
+The tag does not cover the frame control or capability bytes; only what
+decrypts is trusted.
+
+Idle advertisements carry no objects. Once a weight is final, the scale
+broadcasts it as object `0x4E16`:
+
+```text
+profile (u8) ‖ weight (u32, hundredths of a kg) ‖ scale time (u32)
+```
+
+The scale time is the same timestamp as in the final reading over the
+connection.
 
 ## Deliberate deviations from the prototype
 
