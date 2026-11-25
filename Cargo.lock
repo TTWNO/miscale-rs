@@ -271,6 +271,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "miscale"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "mible-spec",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"

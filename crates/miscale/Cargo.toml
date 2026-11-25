@@ -1,0 +1,19 @@
+[package]
+name = "miscale"
+description = "Sans-io, no_std weigh session for the Xiaomi Smart Scale S200"
+readme = "README.md"
+keywords = ["xiaomi", "scale", "sans-io", "no-std", "ble"]
+categories = ["embedded", "network-programming", "no-std::no-alloc"]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+heapless = { workspace = true }
+mible-spec = { workspace = true }
+
+[lints]
+workspace = true
