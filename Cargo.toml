@@ -24,6 +24,7 @@ mible-transport = { path = "crates/mible-transport" }
 miscale = { path = "crates/miscale" }
 miscale-sim = { path = "crates/miscale-sim" }
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
+pyo3 = { version = "0.30.1", default-features = false, features = ["abi3-py312", "macros"] }
 sha2 = { version = "0.11.1", default-features = false, features = ["zeroize"] }
 zeroize = { version = "1.9.2", default-features = false, features = ["derive"] }
 

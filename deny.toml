@@ -11,7 +11,7 @@ ignore = []
 [licenses]
 version = 2
 confidence-threshold = 0.95
-allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
+allow = ["Apache-2.0", "Apache-2.0 WITH LLVM-exception", "MIT", "Unicode-3.0"]
 
 [bans]
 multiple-versions = "deny"
@@ -19,6 +19,11 @@ wildcards = "deny"
 # Workspace-internal path dependencies carry no version; nothing is published.
 allow-wildcard-paths = true
 highlight = "all"
+skip = [
+  # Build-time only: zeroize_derive is still on syn 2, PyO3's macros moved
+  # to syn 3. Neither ships in any binary; drop once zeroize_derive moves.
+  { crate = "syn@2", reason = "proc-macro dependency mid-migration (zeroize_derive)" },
+]
 
 [sources]
 unknown-registry = "deny"

@@ -24,13 +24,19 @@ behind it.
 | [`mible-spec`](crates/mible-spec) | spec frames and the encrypted spec channel |
 | [`miscale`](crates/miscale) | the S200 weigh session |
 | [`miscale-sim`](crates/miscale-sim) | a simulated S200, for tests |
+| [`miscale-py`](crates/miscale-py) | Python bindings (PyO3) for Home Assistant |
 
 ## Developing
 
 ```sh
-make check   # formatting, clippy, tests, docs, typos, taplo, cargo-deny, machete
+make check   # formatting, clippy, tests, docs, typos, taplo, cargo-deny,
+             # machete, the no_std build, and `make py`
+make py      # build the native module into a uv virtualenv; ruff, mypy, pytest
 make ci      # the full GitHub Actions workflow, locally, under act
 ```
+
+Python tooling is managed by [uv](https://docs.astral.sh/uv/); the
+native module is built with [maturin](https://www.maturin.rs/).
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the lint policy and commit
 conventions.

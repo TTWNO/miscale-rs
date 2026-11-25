@@ -106,7 +106,7 @@ jobs:
         with:
           tool: cargo-nextest
       - run: cargo nextest run --workspace --all-features --locked
-      - run: cargo test --workspace --all-features --locked --doc
+      - run: cargo test --workspace --exclude miscale-py --all-features --locked --doc
 
   rust-no-std:
     name: no_std build (thumbv7em-none-eabihf)
@@ -121,8 +121,9 @@ jobs:
         with:
           targets: thumbv7em-none-eabihf
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
-      # Library targets only: tests and dev-dependencies may use std.
-      - run: cargo build --workspace --locked --target thumbv7em-none-eabihf
+      # Library targets only (tests and dev-dependencies may use std), and
+      # not the Python binding, which is std by nature.
+      - run: cargo build --workspace --exclude miscale-py --locked --target thumbv7em-none-eabihf
 
   rust-msrv:
     name: MSRV (1.89)
@@ -208,3 +209,21 @@ jobs:
           git rev-list --no-merges "$range" | while read -r sha; do
             committed --no-merge-commit "$sha"
           done
+
+  python:
+    name: Python (native module, ruff, mypy, pytest)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: make py

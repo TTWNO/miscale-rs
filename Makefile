@@ -5,9 +5,9 @@ CARGO ?= cargo
 MSRV := 1.89
 ACT_SOCKET ?= unix:///run/user/$(shell id -u)/podman/podman.sock
 
-.PHONY: check fmt fmt-check clippy test doc deny machete typos taplo nostd msrv ci act-image
+.PHONY: check fmt fmt-check clippy test doc deny machete typos taplo nostd msrv py py-env ci act-image
 
-check: fmt-check clippy test doc typos taplo deny machete nostd
+check: fmt-check clippy test doc typos taplo deny machete nostd py
 
 fmt:
 	$(CARGO) fmt --all
@@ -21,7 +21,7 @@ clippy:
 
 test:
 	$(CARGO) nextest run --workspace --all-features --locked
-	$(CARGO) test --workspace --all-features --locked --doc
+	$(CARGO) test --workspace --exclude miscale-py --all-features --locked --doc
 
 doc:
 	RUSTDOCFLAGS="-D warnings" $(CARGO) doc --workspace --all-features --no-deps --locked
@@ -35,13 +35,26 @@ machete:
 typos:
 	typos
 
-# Library targets of every crate must build without std.
+# Library targets of every crate but the Python binding must build without std.
 NOSTD_TARGET := thumbv7em-none-eabihf
 nostd:
-	$(CARGO) build --workspace --locked --target $(NOSTD_TARGET)
+	$(CARGO) build --workspace --exclude miscale-py --locked --target $(NOSTD_TARGET)
 
 msrv:
 	$(CARGO) +$(MSRV) check --workspace --all-targets --all-features --locked
+
+# Python: build the native module (with the test simulator) into a uv-managed
+# virtualenv, then lint, type-check and test the Python side.
+UV ?= uv
+py-env:
+	$(UV) sync --locked
+	$(UV) run --no-sync maturin develop --uv --locked -m crates/miscale-py/Cargo.toml --features sim
+
+py: py-env
+	$(UV) run --no-sync ruff format --check
+	$(UV) run --no-sync ruff check
+	$(UV) run --no-sync mypy
+	$(UV) run --no-sync pytest
 
 taplo:
 	taplo fmt --check

@@ -1,0 +1,35 @@
+[package]
+name = "miscale-py"
+description = "Python bindings (PyO3) for the miscale sans-io weigh session"
+readme = "README.md"
+keywords = ["xiaomi", "scale", "python", "pyo3", "home-assistant"]
+categories = ["api-bindings"]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "miscale_native"
+crate-type = ["cdylib"]
+# The tests are in Python (tests/); a Rust test harness would have to link
+# libpython, which CI runners do not ship. cargo cannot run cdylib doctests.
+test = false
+doctest = false
+
+[features]
+# Expose the simulated scale, for the integration's tests. Never shipped.
+sim = ["dep:miscale-sim"]
+
+[dependencies]
+mible-auth = { workspace = true }
+mible-crypto = { workspace = true }
+mible-transport = { workspace = true }
+miscale = { workspace = true }
+miscale-sim = { workspace = true, optional = true }
+pyo3 = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,68 @@
+# Development environment for the Python side: the native module's tests now,
+# and the Home Assistant integration. Not a package itself; the native module
+# is built from crates/miscale-py with maturin.
+
+[project]
+name = "miscale-rs-dev"
+version = "0.1.0"
+description = "Development environment for the Xiaomi Smart Scale S200 Home Assistant integration"
+requires-python = ">=3.14.2"
+license = "MIT OR Apache-2.0"
+dependencies = []
+
+[dependency-groups]
+dev = ["maturin==1.16.0", "mypy==2.4.1", "pytest==9.0.3", "ruff==0.17.6"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["crates/miscale-py/tests"]
+
+[tool.ruff.lint]
+# Everything, then a short list of deliberate exceptions.
+select = ["ALL"]
+ignore = [
+  "COM812", # trailing commas are the formatter's job (conflicts with ruff format)
+  "CPY001", # the licence is declared once (LICENSE-*, package metadata), as in the Rust crates
+]
+
+[tool.ruff.lint.per-file-ignores]
+"crates/miscale-py/tests/**" = [
+  "S101",    # pytest is built on assert
+  "PLR2004", # expected values in tests are literals by design
+  "S105",    # the only "tokens" in tests are published, synthetic test vectors
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+enable_error_code = [
+  "deprecated",
+  "exhaustive-match",
+  "explicit-override",
+  "ignore-without-code",
+  "mutable-override",
+  "possibly-undefined",
+  "redundant-expr",
+  "redundant-self",
+  "truthy-bool",
+  "unused-awaitable",
+]
+# The native module's type stub lives next to its crate.
+mypy_path = "crates/miscale-py"
+files = ["crates/miscale-py/tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["crates/miscale-py/tests"]
+addopts = "--strict-markers --strict-config"
+filterwarnings = ["error"]
