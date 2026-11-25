@@ -13,6 +13,7 @@ from unittest.mock import patch
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 from habluetooth import BluetoothServiceInfoBleak, get_manager
+import miscale_native
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -21,7 +22,7 @@ from homeassistant import loader
 from homeassistant.const import CONF_ADDRESS
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator, Iterator
 
     from homeassistant.core import HomeAssistant
     from homeassistant.loader import BluetoothMatcher
@@ -105,6 +106,60 @@ def config_entry(**options: str) -> MockConfigEntry:
         data={CONF_ADDRESS: ADDRESS, CONF_TOKEN: TOKEN},
         options=options,
     )
+
+
+class FakeClient:
+    """Stands in for a connected BleakClient, with the simulator behind it."""
+
+    def __init__(self, scale: miscale_native.SimulatedScale) -> None:
+        """Wrap a simulated scale."""
+        self.scale = scale
+        self.callbacks: dict[str, Callable[[object, bytearray], None]] = {}
+        self.writes: list[tuple[str, bytes]] = []
+        self.disconnected = False
+
+    async def start_notify(
+        self, char_specifier: str, callback: Callable[[object, bytearray], None]
+    ) -> None:
+        """Remember the notification callback."""
+        self.callbacks[char_specifier] = callback
+
+    async def write_gatt_char(
+        self, char_specifier: str, data: bytes, *, response: bool | None = None
+    ) -> None:
+        """Hand the write to the simulator and deliver what it answers."""
+        assert response is False, "every protocol write is write-without-response"
+        self.writes.append((char_specifier, bytes(data)))
+        self.scale.handle_write(int(char_specifier[4:8], 16), bytes(data))
+        while (note := self.scale.poll_notify()) is not None:
+            uuid16, value = note
+            self.callbacks[f"0000{uuid16:04x}-0000-1000-8000-00805f9b34fb"](None, bytearray(value))
+
+    async def disconnect(self) -> bool:
+        """Record the disconnect."""
+        self.disconnected = True
+        return True
+
+
+@pytest.fixture
+def connect() -> Iterator[Callable[[Script], FakeClient]]:
+    """Patch `establish_connection` to connect to a simulated scale.
+
+    Returns a function that, given a script, arms the next connection and
+    returns the fake client it will use.
+    """
+    clients: list[FakeClient] = []
+
+    def arm(script: Script, **kwargs: bool) -> FakeClient:
+        client = FakeClient(miscale_native.SimulatedScale(TOKEN, DEV_RAND, script, **kwargs))
+        clients.append(client)
+        return client
+
+    async def establish(*_args: object, **_kwargs: object) -> FakeClient:
+        return clients.pop(0)
+
+    with patch("custom_components.miscale.coordinator.establish_connection", establish):
+        yield arm
 
 
 async def setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:

@@ -29,5 +29,20 @@
         "description": "Choose a device to set up"
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "last_weigh_in": {
+        "name": "Last weigh-in"
+      },
+      "live_weight": {
+        "name": "Live weight"
+      }
+    }
+  },
+  "exceptions": {
+    "no_connectable_device": {
+      "message": "No connectable Bluetooth adapter or proxy is in range of {address}."
+    }
   }
 }

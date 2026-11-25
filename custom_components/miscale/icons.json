@@ -1,0 +1,12 @@
+{
+  "entity": {
+    "sensor": {
+      "last_weigh_in": {
+        "default": "mdi:clock-check-outline"
+      },
+      "live_weight": {
+        "default": "mdi:scale-bathroom"
+      }
+    }
+  }
+}
