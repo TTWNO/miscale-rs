@@ -179,3 +179,8 @@ Unless you explicitly state otherwise, any contribution intentionally
 submitted for inclusion in the work by you, as defined in the Apache-2.0
 licence, shall be dual licensed as above, without any additional terms or
 conditions.
+
+## LLM Disclosure
+
+This was mostly made with the help of Claude Opus 5.5 via Claude Code.
+That said, I take responsibility for all the code published here.
