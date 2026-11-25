@@ -293,6 +293,7 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "mible-auth",
+ "mible-beacon",
  "mible-crypto",
  "mible-spec",
  "mible-transport",

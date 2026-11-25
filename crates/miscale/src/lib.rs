@@ -21,8 +21,14 @@
 //! until [`Event::Finished`] arrives, which is always the last event. After
 //! a measurement, keep draining [`WeighSession::poll_transmit`] once more:
 //! it still carries the acknowledgement of the scale's last message.
+//!
+//! # Advertisements
+//!
+//! The scale also broadcasts each final weigh-in, encrypted under its beacon
+//! key; [`beacon::read`] decodes its advertisements.
 #![no_std]
 
+pub mod beacon;
 pub mod profile;
 pub mod session;
 pub mod weight;
