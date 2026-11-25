@@ -5,9 +5,9 @@ CARGO ?= cargo
 MSRV := 1.89
 ACT_SOCKET ?= unix:///run/user/$(shell id -u)/podman/podman.sock
 
-.PHONY: check fmt fmt-check clippy test doc deny machete typos taplo ci act-image
+.PHONY: check fmt fmt-check clippy test doc deny machete typos taplo nostd msrv ci act-image
 
-check: fmt-check clippy test doc typos taplo deny machete
+check: fmt-check clippy test doc typos taplo deny machete nostd
 
 fmt:
 	$(CARGO) fmt --all
@@ -34,6 +34,14 @@ machete:
 
 typos:
 	typos
+
+# Library targets of every crate must build without std.
+NOSTD_TARGET := thumbv7em-none-eabihf
+nostd:
+	$(CARGO) build --workspace --locked --target $(NOSTD_TARGET)
+
+msrv:
+	$(CARGO) +$(MSRV) check --workspace --all-targets --all-features --locked
 
 taplo:
 	taplo fmt --check

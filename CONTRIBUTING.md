@@ -19,9 +19,12 @@ deliberately strict.
 
 ## Checks
 
-`make check` runs the fast gates locally. `make ci` runs the real GitHub
-Actions workflow under [`act`](https://github.com/nektos/act); please run it
-before opening a pull request.
+`make check` runs the fast gates locally, including a build of every
+library for a bare-metal target (`thumbv7em-none-eabihf`) to keep them
+`no_std`; `make msrv` checks the minimum supported Rust version (1.89).
+`make ci` runs the real GitHub Actions workflow under
+[`act`](https://github.com/nektos/act) (build its runner image once with
+`make act-image`); please run it before opening a pull request.
 
 ### Lint policy
 
