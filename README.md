@@ -23,6 +23,7 @@ behind it.
 | [`mible-auth`](crates/mible-auth) | login state machine |
 | [`mible-spec`](crates/mible-spec) | spec frames and the encrypted spec channel |
 | [`miscale`](crates/miscale) | the S200 weigh session |
+| [`miscale-sim`](crates/miscale-sim) | a simulated S200, for tests |
 
 ## Developing
 
