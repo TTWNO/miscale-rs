@@ -8,6 +8,8 @@
 #![no_std]
 
 pub mod frame;
+pub mod rx;
+pub mod tx;
 
 /// Largest GATT value this crate writes: one ATT write at the default MTU.
 pub const MAX_PACKET_LEN: usize = 20;
