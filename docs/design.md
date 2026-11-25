@@ -85,8 +85,10 @@ let deadline = machine.poll_timeout();         // next wake-up, if any
   (`Finished(outcome)`). After it, `poll_transmit()` and `poll_timeout()`
   return `None` and further input is ignored.
 - **Single-threaded driving.** The integration's Bluetooth callbacks only
-  enqueue notifications; one task feeds them in order, then drains
-  transmits (written as write-without-response, in order) and events.
+  enqueue notifications; one task feeds them in order and, after *every*
+  call, drains transmits (written as write-without-response, in order) and
+  events. A receiver whose acknowledgements are not drained fails with a
+  backlog error instead of silently losing one.
 
 - **No I/O, no clock, no RNG** inside the crates. The caller passes a
   monotonic `Instant` (milliseconds), the wall-clock Unix time the profile

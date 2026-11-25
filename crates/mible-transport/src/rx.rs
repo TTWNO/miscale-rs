@@ -6,8 +6,9 @@ use core::fmt;
 use crate::Packet;
 use crate::frame::{AckStatus, Frame};
 
-/// Most control frames waiting to be written at once. The receiver answers
-/// at most one frame per input, so two leaves room for a restart.
+/// Most control frames waiting to be written at once. One input queues at
+/// most two (an empty parcel's ready and success), and callers drain
+/// transmits after every input.
 const MAX_PENDING: usize = 2;
 
 /// What to do with a [`Frame::Single`].
@@ -91,6 +92,9 @@ pub enum ReceiveError {
         /// Index received.
         got: u16,
     },
+    /// Acknowledgements piled up because transmits were not drained after
+    /// each input; one would have been lost.
+    Backlog,
 }
 
 impl fmt::Display for ReceiveError {
@@ -99,6 +103,7 @@ impl fmt::Display for ReceiveError {
             Self::Gap { expected, got } => {
                 write!(f, "expected fragment {expected}, received fragment {got}")
             }
+            Self::Backlog => f.write_str("acknowledgements were not drained"),
         }
     }
 }
@@ -121,6 +126,8 @@ pub struct Receiver<const N: usize> {
     buffer: heapless::Vec<u8, N>,
     /// Control frames waiting to be written.
     pending: heapless::Deque<Packet, MAX_PENDING>,
+    /// Set when a control frame did not fit `pending`.
+    backlog: bool,
 }
 
 impl<const N: usize> Receiver<N> {
@@ -132,6 +139,7 @@ impl<const N: usize> Receiver<N> {
             single,
             buffer: heapless::Vec::new(),
             pending: heapless::Deque::new(),
+            backlog: false,
         }
     }
 
@@ -142,15 +150,25 @@ impl<const N: usize> Receiver<N> {
     }
 
     /// Feeds a frame received on the parcel's characteristic.
+    ///
+    /// Drain [`Receiver::poll_transmit`] after every call: if
+    /// acknowledgements pile up instead, the transfer fails with
+    /// [`ReceiveError::Backlog`] rather than silently losing one.
     pub fn handle(&mut self, frame: &Frame<'_>) -> ReceiveProgress {
-        match *frame {
+        let progress = match *frame {
             Frame::Announce { kind, count } => self.on_announce(kind, count),
             Frame::Fragment { index, payload } => self.on_fragment(index.get(), payload),
             Frame::Single { code, payload } => self.on_single(code, payload),
             Frame::Ack { .. } | Frame::SingleAck { .. } | Frame::Unknown { .. } => {
                 ReceiveProgress::Ignored
             }
+        };
+        if core::mem::take(&mut self.backlog) {
+            self.state = State::Idle;
+            self.buffer.clear();
+            return ReceiveProgress::Failed(ReceiveError::Backlog);
         }
+        progress
     }
 
     /// The next control frame to write, if any.
@@ -257,13 +275,12 @@ impl<const N: usize> Receiver<N> {
         }
     }
 
-    /// Queues a control frame, dropping the oldest if the queue is full.
+    /// Queues a control frame; notes a backlog if there is no room.
     fn queue(&mut self, frame: Frame<'_>) {
-        if let Ok(packet) = frame.encode() {
-            if self.pending.is_full() {
-                let _dropped: Option<Packet> = self.pending.pop_front();
-            }
-            let _queued: Result<(), Packet> = self.pending.push_back(packet);
+        if let Ok(packet) = frame.encode()
+            && self.pending.push_back(packet).is_err()
+        {
+            self.backlog = true;
         }
     }
 }

@@ -347,6 +347,35 @@ fn receiver_accepts_long_fragments() {
     assert_eq!(rx.message(), payload);
 }
 
+/// Receiver: acknowledgements that are not drained fail the transfer
+/// rather than being lost silently.
+#[test]
+fn receiver_backlog() {
+    let mut rx = Receiver::<CAP>::new(SinglePolicy::AckAndDeliver);
+    let single = Frame::Single {
+        code: 1,
+        payload: &[0xaa],
+    };
+    assert!(
+        matches!(rx.handle(&single), ReceiveProgress::Complete { .. }),
+        "first"
+    );
+    assert!(
+        matches!(rx.handle(&single), ReceiveProgress::Complete { .. }),
+        "second"
+    );
+    assert_eq!(
+        rx.handle(&single),
+        ReceiveProgress::Failed(ReceiveError::Backlog),
+        "third"
+    );
+    assert_eq!(
+        drain_receiver(&mut rx).len(),
+        2,
+        "the two queued acks are still sent"
+    );
+}
+
 proptest! {
     /// Any payload up to the buffer size survives a transfer.
     #[test]

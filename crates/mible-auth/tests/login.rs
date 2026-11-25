@@ -54,6 +54,17 @@ fn drain(login: &mut Login) -> Vec<(Channel, Vec<u8>)> {
         .collect()
 }
 
+/// Feeds one notification and drains the writes it caused, as the driving
+/// contract requires; returns the status and the writes.
+fn feed(
+    login: &mut Login,
+    channel: Channel,
+    value: &[u8],
+) -> (LoginStatus, Vec<(Channel, Vec<u8>)>) {
+    let status = login.handle_notify(channel, value);
+    (status, drain(login))
+}
+
 /// `<index LE> <bytes>` fragment.
 fn fragment(index: u16, bytes: &[u8]) -> Vec<u8> {
     let mut out = index.to_le_bytes().to_vec();
@@ -173,20 +184,24 @@ fn full_login() {
 fn wrong_token() {
     let mut login = Login::new(&Token::new([0x11; 12]), app_rand());
     drop(drain(&mut login));
-    let _ready = login.handle_notify(Channel::Auth, &READY);
-    drop(drain(&mut login));
-    let _done = login.handle_notify(Channel::Auth, &SUCCESS);
-    let _announce = login.handle_notify(Channel::Auth, &hex("0000000d0100"));
-    let _random = login.handle_notify(Channel::Auth, &fragment(1, &dev_rand()));
-    let _proof = login.handle_notify(Channel::Auth, &hex("0000000c0200"));
     let proof = dev_proof();
-    let _first = login.handle_notify(Channel::Auth, &fragment(1, &proof[..18]));
-    let status = login.handle_notify(Channel::Auth, &fragment(2, &proof[18..]));
+    let mut status = LoginStatus::InProgress;
+    for value in [
+        READY.to_vec(),
+        SUCCESS.to_vec(),
+        hex("0000000d0100"),
+        fragment(1, &dev_rand()),
+        hex("0000000c0200"),
+        fragment(1, &proof[..18]),
+        fragment(2, &proof[18..]),
+    ] {
+        let (now, writes) = feed(&mut login, Channel::Auth, &value);
+        status = now;
+        if status != LoginStatus::InProgress {
+            assert!(writes.is_empty(), "no app proof leaves after a mismatch");
+        }
+    }
     assert_eq!(status, LoginStatus::Failed(LoginError::ProofMismatch));
-    assert!(
-        drain(&mut login).is_empty(),
-        "no app proof leaves after a mismatch"
-    );
     assert!(login.session_cipher().is_none(), "no cipher after failure");
 }
 
@@ -218,10 +233,10 @@ fn device_errors() {
 fn unexpected_parcel() {
     let mut login = Login::new(&token(), app_rand());
     drop(drain(&mut login));
-    let _ready = login.handle_notify(Channel::Auth, &READY);
-    let _done = login.handle_notify(Channel::Auth, &SUCCESS);
-    let _announce = login.handle_notify(Channel::Auth, &hex("0000000c0100"));
-    let status = login.handle_notify(Channel::Auth, &fragment(1, &[0; 16]));
+    let (_ready, _) = feed(&mut login, Channel::Auth, &READY);
+    let (_done, _) = feed(&mut login, Channel::Auth, &SUCCESS);
+    let (_announce, _) = feed(&mut login, Channel::Auth, &hex("0000000c0100"));
+    let (status, _) = feed(&mut login, Channel::Auth, &fragment(1, &[0; 16]));
     assert_eq!(
         status,
         LoginStatus::Failed(LoginError::UnexpectedParcel {
@@ -236,10 +251,10 @@ fn unexpected_parcel() {
 fn short_device_random() {
     let mut login = Login::new(&token(), app_rand());
     drop(drain(&mut login));
-    let _ready = login.handle_notify(Channel::Auth, &READY);
-    let _done = login.handle_notify(Channel::Auth, &SUCCESS);
-    let _announce = login.handle_notify(Channel::Auth, &hex("0000000d0100"));
-    let status = login.handle_notify(Channel::Auth, &fragment(1, &[0; 15]));
+    let (_ready, _) = feed(&mut login, Channel::Auth, &READY);
+    let (_done, _) = feed(&mut login, Channel::Auth, &SUCCESS);
+    let (_announce, _) = feed(&mut login, Channel::Auth, &hex("0000000d0100"));
+    let (status, _) = feed(&mut login, Channel::Auth, &fragment(1, &[0; 15]));
     assert_eq!(
         status,
         LoginStatus::Failed(LoginError::BadLength {
@@ -260,7 +275,7 @@ fn transport_failures() {
     );
 
     let mut gap = up_to_device_proof();
-    let _announce = gap.handle_notify(Channel::Auth, &hex("0000000c0200"));
+    let (_announce, _) = feed(&mut gap, Channel::Auth, &hex("0000000c0200"));
     assert_eq!(
         gap.handle_notify(Channel::Auth, &fragment(2, &[0; 14])),
         LoginStatus::Failed(LoginError::Receive(ReceiveError::Gap {
@@ -275,11 +290,11 @@ fn transport_failures() {
 fn lost_fragment_is_resent() {
     let mut login = Login::new(&token(), app_rand());
     drop(drain(&mut login));
-    let _ready = login.handle_notify(Channel::Auth, &READY);
-    drop(drain(&mut login));
-    let _lost = login.handle_notify(Channel::Auth, &[0, 0, 1, 5, 1, 0]);
+    let (_ready, first) = feed(&mut login, Channel::Auth, &READY);
+    assert_eq!(first.len(), 1, "the fragment");
+    let (_lost, resent) = feed(&mut login, Channel::Auth, &[0, 0, 1, 5, 1, 0]);
     assert_eq!(
-        drain(&mut login),
+        resent,
         [(Channel::Auth, fragment(1, &app_rand()))],
         "resent"
     );
