@@ -1,0 +1,22 @@
+[package]
+name = "mible-crypto"
+description = "no_std login key schedule, proofs and AES-CCM session cipher for Xiaomi Mi BLE devices"
+readme = "README.md"
+keywords = ["xiaomi", "ble", "aes-ccm", "no-std", "hkdf"]
+categories = ["cryptography", "embedded", "no-std::no-alloc"]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+heapless = { workspace = true }
+hkdf = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+zeroize = { workspace = true }
+
+[lints]
+workspace = true

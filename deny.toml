@@ -11,7 +11,7 @@ ignore = []
 [licenses]
 version = 2
 confidence-threshold = 0.95
-allow = ["Apache-2.0", "MIT"]
+allow = ["Apache-2.0", "MIT", "Unicode-3.0"]
 
 [bans]
 multiple-versions = "deny"

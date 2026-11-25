@@ -19,6 +19,7 @@ behind it.
 | crate | what it does |
 |-------|--------------|
 | [`mible-transport`](crates/mible-transport) | control-frame and parcel framing |
+| [`mible-crypto`](crates/mible-crypto) | login token, key schedule, proofs, session cipher |
 
 ## Developing
 
