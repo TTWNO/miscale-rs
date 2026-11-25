@@ -11,6 +11,9 @@ sans-io Rust crates, and drives them from a Home Assistant custom integration
 that does all Bluetooth I/O through HA's own Bluetooth stack (local adapters
 and ESPHome Bluetooth proxies alike).
 
+See [`docs/design.md`](docs/design.md) for the architecture and the reasons
+behind it.
+
 ## Workspace
 
 | crate | what it does |
