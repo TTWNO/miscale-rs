@@ -13,7 +13,7 @@ MODEL: Final = "Smart Scale S200"
 MODEL_ID: Final = "MJTZC02YM"
 
 # Version of the bundled native module; must match the Rust workspace.
-NATIVE_VERSION: Final = "0.1.0"
+NATIVE_VERSION: Final = "1.1.0"
 
 # MiBeacon service data (Xiaomi 16-bit UUID FE95 in the Bluetooth base UUID).
 MIBEACON_UUID: Final = "0000fe95-0000-1000-8000-00805f9b34fb"
