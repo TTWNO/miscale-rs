@@ -178,8 +178,12 @@ enum Phase {
     Profile,
     /// Waiting for a measurement until the deadline.
     Measuring,
-    /// Over.
-    Finished,
+    /// Over. Acknowledgements already queued for the scale may still go out
+    /// after a measurement, so it knows its last message arrived.
+    Finished {
+        /// Whether queued acknowledgements are still delivered.
+        flush_acks: bool,
+    },
 }
 
 /// Sans-io weigh-in with an S200.
@@ -240,13 +244,13 @@ impl WeighSession {
     /// waiting in [`WeighSession::poll_event`]).
     #[must_use]
     pub const fn is_finished(&self) -> bool {
-        matches!(self.phase, Phase::Finished)
+        matches!(self.phase, Phase::Finished { .. })
     }
 
     /// Feeds a notification received at `now` on `channel`.
     pub fn handle_notify(&mut self, now: Instant, channel: Channel, data: &[u8]) {
         match self.phase {
-            Phase::Finished => {}
+            Phase::Finished { .. } => {}
             Phase::Login => {
                 self.deadline = now.plus_millis(self.config.inactivity_timeout_ms);
                 match self.login.handle_notify(channel, data) {
@@ -275,7 +279,7 @@ impl WeighSession {
             Phase::Login => Outcome::Failed(SessionError::Timeout(Stage::Login)),
             Phase::Hello { .. } => Outcome::Failed(SessionError::Timeout(Stage::Hello)),
             Phase::Profile => Outcome::Failed(SessionError::Timeout(Stage::Profile)),
-            Phase::Measuring | Phase::Finished => Outcome::NoMeasurement,
+            Phase::Measuring | Phase::Finished { .. } => Outcome::NoMeasurement,
         };
         self.finish(outcome);
     }
@@ -288,9 +292,14 @@ impl WeighSession {
     }
 
     /// The next write to perform, if any (always write-without-response).
+    ///
+    /// After [`Event::Finished`] nothing new is sent, but acknowledgements
+    /// of messages the scale already sent are still delivered after a
+    /// measurement, as the official app does before disconnecting.
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
         match (self.phase, self.spec.as_mut()) {
-            (Phase::Finished, _) => None,
+            (Phase::Finished { flush_acks: true }, Some(spec)) => spec.poll_acknowledgement(),
+            (Phase::Finished { .. }, _) => None,
             (Phase::Login, _) => self.login.poll_transmit(),
             (_, Some(spec)) => spec.poll_transmit(),
             (_, None) => None,
@@ -361,7 +370,7 @@ impl WeighSession {
                 self.phase = Phase::Measuring;
                 self.deadline = now.plus_millis(self.config.measurement_timeout_ms);
             }
-            Phase::Login | Phase::Measuring | Phase::Finished => {}
+            Phase::Login | Phase::Measuring | Phase::Finished { .. } => {}
         }
     }
 
@@ -430,7 +439,9 @@ impl WeighSession {
 
     /// Ends the session with `outcome`.
     fn finish(&mut self, outcome: Outcome) {
-        self.phase = Phase::Finished;
+        self.phase = Phase::Finished {
+            flush_acks: matches!(outcome, Outcome::Measured { .. }),
+        };
         self.push_event(Event::Finished(outcome));
     }
 

@@ -82,8 +82,12 @@ let deadline = machine.poll_timeout();         // next wake-up, if any
 ```
 
 - **Termination.** Every session ends with exactly one terminal event
-  (`Finished(outcome)`). After it, `poll_transmit()` and `poll_timeout()`
-  return `None` and further input is ignored.
+  (`Finished(outcome)`), always the last. After it nothing new is sent,
+  `poll_timeout()` is `None` and further input is ignored. After a
+  measurement, acknowledgements already queued (for the message carrying
+  the weight) are still delivered, as the official app does before it
+  disconnects; after a failure they are not, since the link is going away
+  anyway.
 - **Single-threaded driving.** The integration's Bluetooth callbacks only
   enqueue notifications; one task feeds them in order and, after *every*
   call, drains transmits (written as write-without-response, in order) and

@@ -18,7 +18,9 @@
 //!    [`WeighSession::poll_timeout`] passes,
 //! 5. calls [`WeighSession::abort`] if the link drops,
 //!
-//! until [`Event::Finished`] arrives, which is always the last event.
+//! until [`Event::Finished`] arrives, which is always the last event. After
+//! a measurement, keep draining [`WeighSession::poll_transmit`] once more:
+//! it still carries the acknowledgement of the scale's last message.
 #![no_std]
 
 pub mod profile;

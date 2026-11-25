@@ -4,6 +4,7 @@
 use mible_auth::LoginError;
 use mible_crypto::Token;
 use mible_spec::SpecFrame;
+use mible_transport::{Channel, Packet, Transmit};
 use miscale::session::{HELLO_BODY, HELLO_SEQ, PROFILE_SEQ};
 use miscale::{
     Config, Event, Instant, Mid, Outcome, SessionError, Source, Stage, WeighSession, Weight,
@@ -52,26 +53,52 @@ fn run_clocked(
     start: Instant,
     step_ms: u64,
 ) -> Vec<Event> {
+    run_filtered(session, scale, start, step_ms, |notes| notes, Some)
+}
+
+/// The general driver. Each round the scale's pending notifications are
+/// collected and passed through `to_session` (which may reorder, replace or
+/// drop them) and delivered one at a time; after every call the session's
+/// writes are drained, each through `to_scale` (which may drop it), as the
+/// driving contract requires.
+fn run_filtered(
+    session: &mut WeighSession,
+    scale: &mut SimScale,
+    start: Instant,
+    step_ms: u64,
+    mut to_session: impl FnMut(Vec<Transmit>) -> Vec<Transmit>,
+    mut to_scale: impl FnMut(Transmit) -> Option<Transmit>,
+) -> Vec<Event> {
     let mut events = Vec::new();
     let mut now = start;
-    for _round in 0_u32..1024 {
-        let mut moved = false;
-        while let Some(tx) = session.poll_transmit() {
-            scale.handle_write(tx.channel, &tx.data);
-            moved = true;
+    let mut drain = |client: &mut WeighSession, device: &mut SimScale| {
+        while let Some(tx) = client.poll_transmit() {
+            if let Some(tx) = to_scale(tx) {
+                device.handle_write(tx.channel, &tx.data);
+            }
         }
-        while let Some(rx) = scale.poll_notify() {
+    };
+    drain(session, scale);
+    for _round in 0_u32..1024 {
+        let notes = to_session(core::iter::from_fn(|| scale.poll_notify()).collect());
+        if notes.is_empty() {
+            events.extend(core::iter::from_fn(|| session.poll_event()));
+            return events;
+        }
+        for rx in notes {
             now = now.plus_millis(step_ms);
             session.handle_timeout(now);
             session.handle_notify(now, rx.channel, &rx.data);
-            moved = true;
-        }
-        events.extend(core::iter::from_fn(|| session.poll_event()));
-        if !moved {
-            return events;
+            drain(session, scale);
+            events.extend(core::iter::from_fn(|| session.poll_event()));
         }
     }
     panic!("session and scale never fell quiet");
+}
+
+/// A notification value, for building replacements.
+fn note(channel: Channel, data: &[u8]) -> Transmit {
+    Transmit::new(channel, Packet::from_slice(data).unwrap())
 }
 
 /// The last event, which must be `Finished`.
@@ -112,6 +139,11 @@ fn final_weight() {
         session.poll_transmit().is_none(),
         "nothing to send after the end"
     );
+    assert_eq!(
+        scale.unacknowledged(),
+        0,
+        "every message from the scale, the final one included, was acknowledged"
+    );
 }
 
 /// The hello and profile reach the scale with the captured sequence
@@ -151,6 +183,118 @@ fn estimated_weight() {
         Outcome::Measured {
             weight: Weight(8357),
             source: Source::Estimated
+        }
+    );
+    assert_eq!(
+        scale.unacknowledged(),
+        0,
+        "the reading that ended it was acknowledged"
+    );
+}
+
+/// The hello's echo may arrive before the hello's acknowledgement; the
+/// profile still goes out (once both are in) and the weigh-in completes.
+#[test]
+fn echo_before_ack() {
+    let mut scale = scale(&[Step::Final(7000)]);
+    let mut session = session();
+    let mut swapped = false;
+    let events = run_filtered(
+        &mut session,
+        &mut scale,
+        Instant(0),
+        0,
+        |mut notes| {
+            let ack = notes
+                .iter()
+                .position(|tx| tx.channel == Channel::SpecUp && tx.data.as_slice() == [0, 0, 1, 0]);
+            let echo = notes.iter().position(|tx| tx.channel == Channel::SpecDown);
+            if let (Some(ack), Some(echo), false) = (ack, echo, swapped) {
+                notes.swap(ack, echo);
+                swapped = true;
+            }
+            notes
+        },
+        Some,
+    );
+    assert!(swapped, "the echo was delivered first");
+    assert_eq!(
+        outcome(&events),
+        Outcome::Measured {
+            weight: Weight(7000),
+            source: Source::Final
+        }
+    );
+}
+
+/// A scale that answers the hello's announcement with "busy" fails the
+/// session with that reason.
+#[test]
+fn busy_on_the_spec_channel() {
+    let mut scale = scale(&[]);
+    let mut session = session();
+    let events = run_filtered(
+        &mut session,
+        &mut scale,
+        Instant(0),
+        0,
+        |notes| {
+            notes
+                .into_iter()
+                .map(|tx| {
+                    if tx.channel == Channel::SpecUp && tx.data.as_slice() == [0, 0, 1, 1] {
+                        note(Channel::SpecUp, &[0, 0, 1, 2])
+                    } else {
+                        tx
+                    }
+                })
+                .collect()
+        },
+        Some,
+    );
+    assert_eq!(
+        outcome(&events),
+        Outcome::Failed(SessionError::Spec(mible_spec::SpecError::Send(
+            mible_transport::tx::SendError::Refused(mible_transport::frame::AckStatus::Busy)
+        )))
+    );
+}
+
+/// The hello's only fragment is lost on the way; the scale reports it lost,
+/// the session resends it, and the weigh-in completes.
+#[test]
+fn lost_fragment_on_the_spec_channel() {
+    let mut scale = scale(&[Step::Final(6400)]);
+    let mut session = session();
+    let mut dropped = false;
+    let report_lost = core::cell::Cell::new(false);
+    let events = run_filtered(
+        &mut session,
+        &mut scale,
+        Instant(0),
+        0,
+        |mut notes| {
+            if report_lost.take() {
+                notes.push(note(Channel::SpecUp, &[0, 0, 1, 5, 1, 0]));
+            }
+            notes
+        },
+        |tx| {
+            let fragment = tx.channel == Channel::SpecUp && tx.data.first() == Some(&1);
+            if fragment && !dropped {
+                dropped = true;
+                report_lost.set(true);
+                return None;
+            }
+            Some(tx)
+        },
+    );
+    assert!(dropped, "a fragment was dropped");
+    assert_eq!(
+        outcome(&events),
+        Outcome::Measured {
+            weight: Weight(6400),
+            source: Source::Final
         }
     );
 }
@@ -300,19 +444,16 @@ fn abort_and_after() {
         "aborted"
     );
     assert_eq!(session.poll_event(), None, "exactly one terminal event");
-    session.handle_notify(
-        Instant(0),
-        mible_transport::Channel::Control,
-        &[0x21, 0, 0, 0],
-    );
+    session.handle_notify(Instant(0), Channel::Control, &[0x21, 0, 0, 0]);
     session.handle_timeout(Instant(u64::MAX));
     assert_eq!(session.poll_event(), None, "input after the end is ignored");
     assert!(session.poll_transmit().is_none(), "no writes after the end");
 }
 
 proptest! {
-    /// Arbitrary notifications and timeouts never panic, and a session never
-    /// emits more than one terminal event.
+    /// Arbitrary notifications and timeouts never panic; a session emits at
+    /// most one terminal event, it is the last one, and nothing is sent
+    /// after it but acknowledgements.
     #[test]
     fn arbitrary_input_is_safe(
         inputs in proptest::collection::vec(
@@ -321,22 +462,28 @@ proptest! {
         )
     ) {
         let mut session = session();
-        let mut finished = 0_u32;
+        let mut finished = false;
         let mut now = 0_u64;
         for (channel, value, step) in &inputs {
             now = now.saturating_add(*step);
-            if let Some(channel) = mible_transport::Channel::ALL.get(usize::from(*channel)) {
+            if let Some(channel) = Channel::ALL.get(usize::from(*channel)) {
                 session.handle_notify(Instant(now), *channel, value);
             } else {
                 session.handle_timeout(Instant(now));
             }
-            while session.poll_transmit().is_some() {}
-            while let Some(event) = session.poll_event() {
-                if matches!(event, Event::Finished(_)) {
-                    finished = finished.saturating_add(1);
+            while let Some(tx) = session.poll_transmit() {
+                if finished {
+                    let ack = matches!(
+                        mible_transport::frame::Frame::parse(&tx.data),
+                        Some(mible_transport::frame::Frame::Ack { .. } | mible_transport::frame::Frame::SingleAck { .. })
+                    );
+                    prop_assert!(ack, "only acknowledgements after the end");
                 }
             }
+            while let Some(event) = session.poll_event() {
+                prop_assert!(!finished, "an event after Finished: {event:?}");
+                finished = matches!(event, Event::Finished(_));
+            }
         }
-        prop_assert!(finished <= 1, "{finished} terminal events");
     }
 }

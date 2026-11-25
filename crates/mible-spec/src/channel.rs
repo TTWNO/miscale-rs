@@ -255,6 +255,17 @@ impl SpecChannel {
             .map(|data| Transmit::new(self.outgoing(), data))
     }
 
+    /// The next acknowledgement of a received message, if any, and nothing
+    /// else: for flushing acknowledgements once the caller is done sending.
+    pub fn poll_acknowledgement(&mut self) -> Option<Transmit> {
+        if self.failed.is_some() {
+            return None;
+        }
+        self.receiver
+            .poll_transmit()
+            .map(|data| Transmit::new(self.incoming(), data))
+    }
+
     /// The plaintext of the last message received.
     #[must_use]
     pub fn message(&self) -> &[u8] {
