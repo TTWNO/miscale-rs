@@ -3,13 +3,24 @@
     "abort": {
       "already_configured": "Device is already configured",
       "no_devices_found": "No devices found on the network",
-      "not_supported": "This device is not a Xiaomi Smart Scale S200."
+      "not_supported": "This device is not a Xiaomi Smart Scale S200.",
+      "reauth_successful": "Re-authentication was successful"
     },
     "error": {
       "invalid_token": "The token must be exactly 24 hexadecimal digits."
     },
     "flow_title": "{name}",
     "step": {
+      "reauth_confirm": {
+        "data": {
+          "token": "Token"
+        },
+        "data_description": {
+          "token": "The scale's 24-digit login token."
+        },
+        "description": "The scale rejected the stored token. Enter the current one.",
+        "title": "Reauthenticate integration"
+      },
       "token": {
         "data": {
           "token": "Token"

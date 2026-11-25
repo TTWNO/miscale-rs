@@ -155,4 +155,6 @@ class MiScaleCoordinator(ActiveBluetoothDataUpdateCoordinator[MiScaleData]):
             _LOGGER.debug("Measured %s kg (%s)", data.weight_kg, data.source)
         elif finished.outcome == "failed":
             _LOGGER.warning("Weigh session failed: %s", finished.error)
+            if finished.reason == "wrong_token":
+                self._entry.async_start_reauth(self.hass)
         return data

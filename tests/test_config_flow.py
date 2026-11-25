@@ -86,3 +86,20 @@ async def test_user_flow(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_TOKEN: TOKEN})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {CONF_ADDRESS: ADDRESS, CONF_TOKEN: TOKEN}
+
+
+async def test_reauth(hass: HomeAssistant) -> None:
+    """Reauth replaces the stored token."""
+    entry = config_entry()
+    entry.add_to_hass(hass)
+    result = await entry.start_reauth_flow(hass)
+    assert result["step_id"] == "reauth_confirm"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_TOKEN: "x"})
+    assert result["errors"] == {CONF_TOKEN: "invalid_token"}
+    new_token = "00112233445566778899aabb"  # gitleaks:allow - a synthetic test value
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_TOKEN: new_token}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_TOKEN] == new_token

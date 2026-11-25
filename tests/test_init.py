@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import (
     mock_restore_cache_with_extra_data,
 )
 
+from custom_components.miscale.const import CONF_TOKEN, DOMAIN
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
     ATTR_DEVICE_CLASS,
@@ -127,6 +128,24 @@ async def test_cooldown(hass: HomeAssistant, connect: Callable[[Script], FakeCli
     with patch("custom_components.miscale.coordinator.establish_connection") as establish:
         await weigh(hass)
     establish.assert_not_called()
+
+
+async def test_wrong_token_starts_reauth(
+    hass: HomeAssistant, connect: Callable[[Script], FakeClient]
+) -> None:
+    """A token the scale rejects asks the user for a new one."""
+    connect([("final", 7000)])
+    entry = config_entry()
+    entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_TOKEN: "ffffffffffffffffffffffff"}
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await weigh(hass)
+    assert state_of(hass, WEIGHT).state == STATE_UNKNOWN
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert [flow["context"]["source"] for flow in flows] == ["reauth"]
 
 
 async def test_nobody_steps_on(
