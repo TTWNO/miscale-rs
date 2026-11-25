@@ -1,0 +1,23 @@
+[package]
+name = "mible-auth"
+description = "Sans-io, no_std login state machine for Xiaomi Mi BLE devices"
+readme = "README.md"
+keywords = ["xiaomi", "ble", "sans-io", "no-std", "authentication"]
+categories = ["embedded", "network-programming", "no-std::no-alloc"]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mible-crypto = { workspace = true }
+mible-transport = { workspace = true }
+
+[dev-dependencies]
+heapless = { workspace = true }
+proptest = { workspace = true }
+
+[lints]
+workspace = true

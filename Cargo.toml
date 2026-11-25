@@ -17,6 +17,7 @@ ccm = { version = "0.6.1", default-features = false }
 heapless = { version = "0.9.4", default-features = false }
 hkdf = { version = "0.13.0", default-features = false }
 hmac = { version = "0.13.0", default-features = false }
+mible-auth = { path = "crates/mible-auth" }
 mible-crypto = { path = "crates/mible-crypto" }
 mible-transport = { path = "crates/mible-transport" }
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }

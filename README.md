@@ -20,6 +20,7 @@ behind it.
 |-------|--------------|
 | [`mible-transport`](crates/mible-transport) | control-frame and parcel framing |
 | [`mible-crypto`](crates/mible-crypto) | login token, key schedule, proofs, session cipher |
+| [`mible-auth`](crates/mible-auth) | login state machine |
 
 ## Developing
 
