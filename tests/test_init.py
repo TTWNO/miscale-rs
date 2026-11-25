@@ -18,16 +18,30 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
     ATTR_DEVICE_CLASS,
     ATTR_UNIT_OF_MEASUREMENT,
+    EVENT_STATE_CHANGED,
     STATE_UNKNOWN,
     UnitOfMass,
 )
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .conftest import ADDRESS, BEACON_KEY, MID, TOKEN, config_entry, inject, service_info, setup
+from .conftest import (
+    ADDRESS,
+    BEACON_KEY,
+    MID,
+    SCALE_TIME,
+    TOKEN,
+    broadcast,
+    config_entry,
+    inject,
+    service_info,
+    setup,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from habluetooth import BluetoothServiceInfoBleak
 
     from .conftest import FakeClient, Script
 
@@ -158,6 +172,105 @@ async def test_wrong_token_starts_reauth(
     assert state_of(hass, WEIGHT).state == STATE_UNKNOWN
     flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
     assert [flow["context"]["source"] for flow in flows] == ["reauth"]
+
+
+def weigh_in_events(hass: HomeAssistant) -> list[State]:
+    """Start recording the weigh-in event's new states."""
+    fired: list[State] = []
+
+    def record(event: Event[EventStateChangedData]) -> None:
+        if event.data["entity_id"] == EVENT and (state := event.data["new_state"]) is not None:
+            fired.append(state)
+
+    hass.bus.async_listen(EVENT_STATE_CHANGED, record)
+    return fired
+
+
+async def hear(hass: HomeAssistant, info: BluetoothServiceInfoBleak) -> None:
+    """Deliver an advertisement and let everything it starts finish."""
+    inject(info)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+
+async def test_broadcast_weigh_in(hass: HomeAssistant) -> None:
+    """A weigh-in the scale broadcasts is recorded without connecting."""
+    await setup(hass, config_entry())
+    fired = weigh_in_events(hass)
+    with patch("custom_components.miscale.coordinator.establish_connection") as establish:
+        await hear(hass, broadcast(7000, 1))
+    establish.assert_not_called()
+    assert float(state_of(hass, WEIGHT).state) == 70.0
+    assert [state.attributes["source"] for state in fired] == ["broadcast"]
+    assert state_of(hass, LAST).state != STATE_UNKNOWN
+
+
+async def test_weigh_in_reported_twice_is_recorded_once(
+    hass: HomeAssistant, connect: Callable[[Script], FakeClient]
+) -> None:
+    """The broadcast of a weigh-in read over the connection is not a new one."""
+    connect([("final", 7000)])
+    await setup(hass, config_entry())
+    fired = weigh_in_events(hass)
+    await weigh(hass)
+    await hear(hass, broadcast(7000, 1, scale_time=SCALE_TIME))
+    await hear(hass, broadcast(7000, 2, scale_time=SCALE_TIME))
+    assert [state.attributes["source"] for state in fired] == ["final"]
+    # The next weigh-in has a later timestamp, even at the same weight.
+    await hear(hass, broadcast(7000, 3, scale_time=SCALE_TIME + 60))
+    assert [state.attributes["source"] for state in fired] == ["final", "broadcast"]
+
+
+async def test_broadcast_refines_an_estimate(
+    hass: HomeAssistant, connect: Callable[[Script], FakeClient]
+) -> None:
+    """The scale's broadcast value replaces an estimate of the same weigh-in."""
+    connect([*[("live", centi) for centi in (8350, 8360, 8355, 8358, 8362)], ("live", 40)])
+    await setup(hass, config_entry())
+    fired = weigh_in_events(hass)
+    await weigh(hass)
+    assert float(state_of(hass, WEIGHT).state) == 83.57
+    await hear(hass, broadcast(8360, 1))
+    assert float(state_of(hass, WEIGHT).state) == 83.6
+    assert [state.attributes["source"] for state in fired] == ["estimated"], "one weigh-in"
+
+
+async def test_someone_else_after_an_estimate(
+    hass: HomeAssistant, connect: Callable[[Script], FakeClient]
+) -> None:
+    """A broadcast far from the estimate is another weigh-in, with its own event."""
+    connect([*[("live", centi) for centi in (8350, 8360, 8355, 8358, 8362)], ("live", 40)])
+    await setup(hass, config_entry())
+    fired = weigh_in_events(hass)
+    await weigh(hass)
+    await hear(hass, broadcast(6400, 1))
+    assert float(state_of(hass, WEIGHT).state) == 64.0
+    assert [state.attributes["source"] for state in fired] == ["estimated", "broadcast"]
+
+
+async def test_wrong_beacon_key_starts_reauth(
+    hass: HomeAssistant, connect: Callable[[Script], FakeClient]
+) -> None:
+    """Advertisements that keep failing to decrypt ask for new credentials."""
+    connect([("final", 7000)])
+    await setup(hass, config_entry())
+    await hear(hass, broadcast(7000, 1, beacon_key="a5" * 16))
+    assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN), "one could be forged"
+    await hear(hass, broadcast(7000, 2, beacon_key="a5" * 16))
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert [flow["context"]["source"] for flow in flows] == ["reauth"]
+
+
+async def test_one_undecryptable_advertisement_is_forgiven(
+    hass: HomeAssistant, connect: Callable[[Script], FakeClient]
+) -> None:
+    """A good advertisement between bad ones resets the count."""
+    connect([("final", 7000)])
+    await setup(hass, config_entry())
+    await hear(hass, broadcast(None, 1))
+    await hear(hass, broadcast(7000, 2, beacon_key="a5" * 16))
+    await hear(hass, broadcast(7100, 3))
+    await hear(hass, broadcast(7000, 4, beacon_key="a5" * 16))
+    assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN)
 
 
 async def test_nobody_steps_on(

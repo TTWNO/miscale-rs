@@ -1,15 +1,21 @@
-"""Coordinator: an advertisement means the scale is awake, so weigh."""
+"""Coordinator: an advertisement means the scale is awake, so weigh.
+
+Every advertisement is also read with the beacon key: once a weight is
+final, the scale broadcasts it, encrypted. A weigh-in reported both ways
+carries the same scale timestamp and is recorded once.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
 from homeassistant.components.bluetooth import (
+    BluetoothChange,
     BluetoothScanningMode,
     BluetoothServiceInfoBleak,
     async_ble_device_from_address,
@@ -23,14 +29,25 @@ from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_MID, CONF_TOKEN, DOMAIN, POLL_COOLDOWN_SECONDS
+from .const import (
+    CONF_BEACON_KEY,
+    CONF_MID,
+    CONF_TOKEN,
+    DOMAIN,
+    ESTIMATE_REFINE_KG,
+    ESTIMATE_REFINE_SECONDS,
+    MIBEACON_UUID,
+    POLL_COOLDOWN_SECONDS,
+    WRONG_BEACON_KEY_AFTER,
+)
 from .mibeacon import is_s200
+from .native import native
 from .runner import SessionRunner, new_session
 
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from miscale_native import Event
+    from miscale_native import Event, WeighIn
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,9 +61,11 @@ class MiScaleData:
     weight_kg: float | None = None
     """The last measured weight."""
     source: str | None = None
-    """How it was obtained: `final` or `estimated`."""
+    """How it was obtained: `final`, `estimated` or `broadcast`."""
     measured_at: datetime | None = None
     """When it was measured."""
+    scale_time: int | None = None
+    """The scale's own timestamp of it (`final` and `broadcast` only)."""
     measurement_count: int = 0
     """Measurements since start-up; changes on every new one."""
     live_kg: float | None = None
@@ -70,6 +89,10 @@ class MiScaleCoordinator(ActiveBluetoothDataUpdateCoordinator[MiScaleData]):
         self._entry = entry
         self._running = False
         self._last_end: float | None = None
+        self._beacon = native.BeaconReader(entry.data[CONF_BEACON_KEY], entry.data[CONF_ADDRESS])
+        self._undecryptable = 0
+        # When the last weigh-in was estimated, and its weight.
+        self._estimate: tuple[float, float] | None = None
         super().__init__(
             hass,
             _LOGGER,
@@ -80,6 +103,61 @@ class MiScaleCoordinator(ActiveBluetoothDataUpdateCoordinator[MiScaleData]):
             connectable=True,
         )
         self.data = MiScaleData()
+
+    @callback
+    @override
+    def _async_handle_bluetooth_event(
+        self, service_info: BluetoothServiceInfoBleak, change: BluetoothChange
+    ) -> None:
+        """Read the advertisement, then let the base class decide whether to weigh."""
+        self._read_advertisement(service_info)
+        super()._async_handle_bluetooth_event(service_info, change)
+
+    @callback
+    def _read_advertisement(self, service_info: BluetoothServiceInfoBleak) -> None:
+        """Record a broadcast weigh-in; notice a wrong beacon key."""
+        data = service_info.service_data.get(MIBEACON_UUID)
+        beacon = None if data is None else self._beacon.read(data)
+        if beacon is None or not beacon.encrypted:
+            return
+        if not beacon.authentic:
+            self._undecryptable += 1
+            if self._undecryptable == WRONG_BEACON_KEY_AFTER:
+                _LOGGER.warning("The scale's advertisements do not decrypt with its beacon key")
+                self._entry.async_start_reauth(self.hass)
+            return
+        self._undecryptable = 0
+        if beacon.weigh_in is not None:
+            self._on_broadcast(beacon.weigh_in)
+
+    @callback
+    def _on_broadcast(self, weigh_in: WeighIn) -> None:
+        """Record a weigh-in the scale broadcast, unless it is already known."""
+        weight_kg = _kilograms(weigh_in.weight_centi_kg)
+        _LOGGER.debug("Broadcast weigh-in: %s kg, scale time %s", weight_kg, weigh_in.scale_time)
+        # The weigh-in is over: do not connect for it.
+        self._last_end = time.monotonic()
+        if weigh_in.scale_time == self.data.scale_time:
+            return
+        if self._refines_estimate(weight_kg):
+            # The scale's value of the weigh-in just estimated: no new event.
+            self._estimate = None
+            self.data = replace(
+                self.data, weight_kg=weight_kg, source="broadcast", scale_time=weigh_in.scale_time
+            )
+        else:
+            self.data = self._measured(self.data, weight_kg, "broadcast", weigh_in.scale_time)
+        self.async_update_listeners()
+
+    def _refines_estimate(self, weight_kg: float | None) -> bool:
+        """Whether a broadcast weight is the scale's value of the last estimate."""
+        if self._estimate is None or weight_kg is None:
+            return False
+        estimated_at, estimate_kg = self._estimate
+        return (
+            time.monotonic() - estimated_at < ESTIMATE_REFINE_SECONDS
+            and abs(weight_kg - estimate_kg) <= ESTIMATE_REFINE_KG
+        )
 
     @callback
     def _needs_poll(
@@ -144,17 +222,39 @@ class MiScaleCoordinator(ActiveBluetoothDataUpdateCoordinator[MiScaleData]):
     def _apply(self, finished: Event) -> MiScaleData:
         """Fold a session's `finished` event into the data."""
         data = replace(self.data, last_outcome=finished.outcome, last_error=finished.error)
-        if finished.outcome == "measured":
-            data = replace(
+        if finished.outcome == "measured" and (
+            finished.scale_time is None or finished.scale_time != data.scale_time
+        ):
+            data = self._measured(
                 data,
-                weight_kg=_kilograms(finished.weight_centi_kg),
-                source=finished.source,
-                measured_at=dt_util.utcnow(),
-                measurement_count=data.measurement_count + 1,
+                _kilograms(finished.weight_centi_kg),
+                finished.source or "final",
+                finished.scale_time,
             )
-            _LOGGER.debug("Measured %s kg (%s)", data.weight_kg, data.source)
+            self._estimate = (
+                (time.monotonic(), data.weight_kg)
+                if finished.source == "estimated" and data.weight_kg is not None
+                else None
+            )
+            _LOGGER.debug(
+                "Measured %s kg (%s, scale time %s)", data.weight_kg, data.source, data.scale_time
+            )
         elif finished.outcome == "failed":
             _LOGGER.warning("Weigh session failed: %s", finished.error)
             if finished.reason == "wrong_token":
                 self._entry.async_start_reauth(self.hass)
         return data
+
+    @staticmethod
+    def _measured(
+        data: MiScaleData, weight_kg: float | None, source: str, scale_time: int | None
+    ) -> MiScaleData:
+        """Return `data` with a new measurement."""
+        return replace(
+            data,
+            weight_kg=weight_kg,
+            source=source,
+            measured_at=dt_util.utcnow(),
+            scale_time=scale_time,
+            measurement_count=data.measurement_count + 1,
+        )

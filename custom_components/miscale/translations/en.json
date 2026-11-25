@@ -23,7 +23,7 @@
         },
         "data_description": {
           "token": "The scale's 24-digit login token (TOKEN in the token extractor's output). It lets Home Assistant log in to the scale and read each weigh-in.",
-          "beacon_key": "The scale's 32-digit beacon key (BLE KEY in the token extractor's output). It decrypts the scale's advertisements and proves they come from this scale.",
+          "beacon_key": "The scale's 32-digit beacon key (BLE KEY in the token extractor's output). It decrypts the weigh-ins the scale broadcasts, and proves they come from this scale.",
           "mid": "The numeric ID of the Xiaomi account the scale is paired with. The scale is told it with every weigh-in."
         },
         "description": "Enter the credentials of {name}. All three come from the Xiaomi account the scale is paired with, extracted once; after that the integration talks to the scale directly."
@@ -36,7 +36,7 @@
         },
         "data_description": {
           "token": "The scale's 24-digit login token (TOKEN in the token extractor's output). It lets Home Assistant log in to the scale and read each weigh-in.",
-          "beacon_key": "The scale's 32-digit beacon key (BLE KEY in the token extractor's output). It decrypts the scale's advertisements and proves they come from this scale.",
+          "beacon_key": "The scale's 32-digit beacon key (BLE KEY in the token extractor's output). It decrypts the weigh-ins the scale broadcasts, and proves they come from this scale.",
           "mid": "The numeric ID of the Xiaomi account the scale is paired with. The scale is told it with every weigh-in."
         },
         "description": "The scale rejected the stored token or beacon key. Enter the current credentials: they change when the scale is reset and paired again.",
@@ -50,7 +50,7 @@
         },
         "data_description": {
           "token": "The scale's 24-digit login token (TOKEN in the token extractor's output). It lets Home Assistant log in to the scale and read each weigh-in.",
-          "beacon_key": "The scale's 32-digit beacon key (BLE KEY in the token extractor's output). It decrypts the scale's advertisements and proves they come from this scale.",
+          "beacon_key": "The scale's 32-digit beacon key (BLE KEY in the token extractor's output). It decrypts the weigh-ins the scale broadcasts, and proves they come from this scale.",
           "mid": "The numeric ID of the Xiaomi account the scale is paired with. The scale is told it with every weigh-in."
         },
         "description": "Enter the scale's current credentials."

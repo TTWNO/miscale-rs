@@ -39,6 +39,8 @@ TOKEN = "0cf5615003810d89c233a12a"
 BEACON_KEY = "5a" * 16
 MID = "4242"
 ADDRESS = "AA:BB:CC:DD:EE:FF"
+# The simulated scale's clock: the timestamp of its weigh-ins.
+SCALE_TIME = 1_764_000_000
 DEV_RAND = bytes([0x90] * 16)
 
 # A MiBeacon v5 idle frame with the S200's product id (0x45C9), from the
@@ -98,6 +100,22 @@ def service_info(
         connectable=True,
         time=0.0,
         tx_power=None,
+    )
+
+
+def broadcast(
+    centi_kg: int | None,
+    frame_counter: int,
+    *,
+    beacon_key: str = BEACON_KEY,
+    scale_time: int = SCALE_TIME,
+) -> BluetoothServiceInfoBleak:
+    """Build an advertisement from the fake scale: a weigh-in, or idle for None."""
+    weigh_in = None if centi_kg is None else (centi_kg, scale_time)
+    return service_info(
+        service_data=miscale_native.simulated_advertisement(
+            beacon_key, ADDRESS, frame_counter, weigh_in=weigh_in
+        )
     )
 
 
@@ -163,8 +181,10 @@ def connect() -> Iterator[Callable[[Script], FakeClient]]:
     """
     clients: list[FakeClient] = []
 
-    def arm(script: Script, **kwargs: bool) -> FakeClient:
-        client = FakeClient(miscale_native.SimulatedScale(TOKEN, DEV_RAND, script, **kwargs))
+    def arm(script: Script, *, device_time: int = SCALE_TIME, **flags: bool) -> FakeClient:
+        client = FakeClient(
+            miscale_native.SimulatedScale(TOKEN, DEV_RAND, script, device_time=device_time, **flags)
+        )
         clients.append(client)
         return client
 
