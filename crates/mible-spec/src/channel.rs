@@ -59,6 +59,8 @@ pub enum SpecError {
     TooLong,
     /// Sealing or opening failed (for opening: wrong keys or tampering).
     Crypto(CipherError),
+    /// Every counter value has been used; a new session is needed.
+    CounterExhausted,
     /// Sending a parcel failed.
     Send(SendError),
     /// Receiving a parcel failed.
@@ -71,6 +73,7 @@ impl fmt::Display for SpecError {
             Self::Busy => f.write_str("a spec message is still being sent"),
             Self::TooLong => f.write_str("spec message too long"),
             Self::Crypto(err) => write!(f, "spec message crypto failed: {err}"),
+            Self::CounterExhausted => f.write_str("spec message counter exhausted"),
             Self::Send(err) => write!(f, "sending a spec message failed: {err}"),
             Self::Receive(err) => write!(f, "receiving a spec message failed: {err}"),
         }
@@ -83,7 +86,7 @@ impl core::error::Error for SpecError {
             Self::Crypto(err) => Some(err),
             Self::Send(err) => Some(err),
             Self::Receive(err) => Some(err),
-            Self::Busy | Self::TooLong => None,
+            Self::Busy | Self::TooLong | Self::CounterExhausted => None,
         }
     }
 }
@@ -94,8 +97,8 @@ pub struct SpecChannel {
     role: Role,
     /// Session cipher for this end.
     cipher: SessionCipher,
-    /// Counter for the next message sealed.
-    next_counter: u16,
+    /// Counter for the next message sealed; `None` once all are used.
+    next_counter: Option<u16>,
     /// Code for the next single frame (device side only).
     next_single: u8,
     /// Sends parcels on the outgoing characteristic.
@@ -128,7 +131,7 @@ impl SpecChannel {
         Self {
             role,
             cipher,
-            next_counter: if matches!(role, Role::Device) { 1 } else { 0 },
+            next_counter: Some(if matches!(role, Role::Device) { 1 } else { 0 }),
             next_single: 0,
             sender: Sender::new(),
             receiver: Receiver::new(SinglePolicy::AckAndDeliver),
@@ -168,7 +171,8 @@ impl SpecChannel {
     /// # Errors
     ///
     /// [`SpecError::Busy`] while a previous message is still being sent,
-    /// [`SpecError::TooLong`] for a plaintext over 255 bytes, and the
+    /// [`SpecError::TooLong`] for a plaintext over 255 bytes,
+    /// [`SpecError::CounterExhausted`] after 65 536 messages, and the
     /// failure that stopped the channel, if it has failed.
     pub fn send(&mut self, plaintext: &[u8]) -> Result<(), SpecError> {
         if let Some(err) = self.failed {
@@ -180,11 +184,13 @@ impl SpecChannel {
         if plaintext.len() > MAX_FRAME_LEN {
             return Err(SpecError::TooLong);
         }
+        let counter = self.next_counter.ok_or(SpecError::CounterExhausted)?;
         let mut sealed = heapless::Vec::<u8, MAX_SEALED_LEN>::new();
         self.cipher
-            .seal(self.next_counter, plaintext, &mut sealed)
+            .seal(counter, plaintext, &mut sealed)
             .map_err(SpecError::Crypto)?;
-        self.next_counter = self.next_counter.wrapping_add(1);
+        // Never reuse a counter: it is half of the AES-CCM nonce.
+        self.next_counter = counter.checked_add(1);
         if matches!(self.role, Role::Device) && sealed.len() <= MAX_SINGLE_PAYLOAD {
             let code = self.next_single;
             self.next_single = self.next_single.wrapping_add(1);

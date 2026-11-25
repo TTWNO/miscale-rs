@@ -132,6 +132,22 @@ fn busy_until_acknowledged() {
     );
 }
 
+/// The counter is half of the nonce, so it is never reused: after the last
+/// value the channel refuses to send rather than wrapping.
+#[test]
+fn counter_never_wraps() {
+    let (mut app, mut device) = pair();
+    for _message in 0..=u16::MAX {
+        app.send(b"x").unwrap();
+        drop(settle(&mut app, &mut device));
+    }
+    assert_eq!(
+        app.send(b"x"),
+        Err(SpecError::CounterExhausted),
+        "exhausted"
+    );
+}
+
 /// Over-long plaintext is refused before anything is sealed.
 #[test]
 fn too_long() {
