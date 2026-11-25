@@ -8,13 +8,17 @@
 //! Like the client, it is sans-io: feed it the client's writes with
 //! [`SimScale::handle_write`] and deliver what [`SimScale::poll_notify`]
 //! returns to the client as notifications.
+//!
+//! [`advertisement`] builds what the scale broadcasts: an idle MiBeacon
+//! frame, or a weigh-in encrypted under its beacon key.
 #![no_std]
 
 use core::fmt;
 
 use mible_auth::login::{command, kind};
+use mible_beacon::{Advertisement, EncodeError, FrameControl, Header, Object};
 use mible_crypto::login::Random;
-use mible_crypto::{LoginKeys, Role, SessionCipher, Token};
+use mible_crypto::{BeaconCipher, BeaconKey, LoginKeys, Role, SessionCipher, Token};
 use mible_spec::codec::push_string;
 use mible_spec::{SpecChannel, SpecFrame, SpecProgress};
 use mible_transport::frame::Frame;
@@ -413,3 +417,52 @@ const HELLO_BODY: [u8; 1] = [0xF0];
 
 /// First bytes of the client's profile body.
 const PROFILE_PREFIX: [u8; 6] = [0x05, 0x07, 0x01, 0x01, 0x01, 0x00];
+
+/// The product id the simulated scale advertises (one of the S200's).
+pub const PRODUCT_ID: u16 = 0x4C04;
+
+/// Frame control of the simulated scale's advertisements: MiBeacon v5,
+/// standard authentication, bound.
+const FRAME_CONTROL: u16 = 0x5908;
+
+/// Object id of a weigh-in (mirrors `miscale`).
+const WEIGH_IN_OBJECT: u16 = 0x4E16;
+
+/// The service data the simulated scale at `address` (display order)
+/// advertises: idle for `None`, or a weigh-in of `(centi_kg, scale_time)`
+/// for profile 1, encrypted under `key`.
+///
+/// # Errors
+///
+/// None in practice: the frames always fit.
+pub fn advertisement(
+    key: &BeaconKey,
+    address: [u8; 6],
+    frame_counter: u8,
+    weigh_in: Option<(u32, u32)>,
+) -> Result<heapless::Vec<u8, 31>, EncodeError> {
+    let header = Header::new(
+        FrameControl::from_bits(FRAME_CONTROL),
+        PRODUCT_ID,
+        frame_counter,
+    );
+    let mut out = heapless::Vec::new();
+    let Some((centi_kg, scale_time)) = weigh_in else {
+        Advertisement::encode_plain(&header, None, &mut out)?;
+        return Ok(out);
+    };
+    let [w0, w1, w2, w3] = centi_kg.to_le_bytes();
+    let [t0, t1, t2, t3] = scale_time.to_le_bytes();
+    let mut objects = heapless::Vec::<u8, 12>::new();
+    Object::new(WEIGH_IN_OBJECT, &[1, w0, w1, w2, w3, t0, t1, t2, t3]).encode(&mut objects)?;
+    let ext_counter = [frame_counter, 0, 0];
+    Advertisement::encode_sealed(
+        &header,
+        &objects,
+        &BeaconCipher::new(key),
+        address,
+        ext_counter,
+        &mut out,
+    )?;
+    Ok(out)
+}

@@ -14,6 +14,7 @@ publish.workspace = true
 [dependencies]
 heapless = { workspace = true }
 mible-auth = { workspace = true }
+mible-beacon = { workspace = true }
 mible-crypto = { workspace = true }
 mible-spec = { workspace = true }
 mible-transport = { workspace = true }
