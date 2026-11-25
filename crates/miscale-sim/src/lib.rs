@@ -128,6 +128,8 @@ pub struct SimScale {
     seq: u16,
     /// The last profile frame received.
     profile: heapless::Vec<u8, MAX_PROFILE>,
+    /// Single frames sent and not yet acknowledged by the client.
+    unacked_singles: usize,
 }
 
 impl fmt::Debug for SimScale {
@@ -163,6 +165,7 @@ impl SimScale {
             streaming: false,
             seq: FIRST_DEVICE_SEQ,
             profile: heapless::Vec::new(),
+            unacked_singles: 0,
         }
     }
 
@@ -178,8 +181,21 @@ impl SimScale {
         &self.profile
     }
 
+    /// Messages the scale sent on the spec channel that the client has not
+    /// acknowledged yet (a parcel in flight counts once).
+    #[must_use]
+    pub fn unacknowledged(&self) -> usize {
+        let parcel = self.spec.as_ref().is_some_and(SpecChannel::is_sending);
+        self.unacked_singles.saturating_add(usize::from(parcel))
+    }
+
     /// Feeds a write the client made.
     pub fn handle_write(&mut self, channel: Channel, data: &[u8]) {
+        if channel == Channel::SpecDown
+            && matches!(Frame::parse(data), Some(Frame::SingleAck { .. }))
+        {
+            self.unacked_singles = self.unacked_singles.saturating_sub(1);
+        }
         match (self.phase, channel) {
             (SimPhase::AwaitLogin, Channel::Control) if data == command::LOGIN => {
                 self.phase = SimPhase::AwaitAppRandom;
@@ -196,22 +212,33 @@ impl SimScale {
 
     /// The next notification to deliver to the client, if any.
     pub fn poll_notify(&mut self) -> Option<Transmit> {
+        // Acknowledge the client's parcel before confirming the login: the
+        // real scale's order (the prototype waits for the ack first).
+        if let Some(data) = self.login_rx.poll_transmit() {
+            return Some(Transmit::new(Channel::Auth, data));
+        }
         if let Some(value) = self.control.take() {
             return Packet::from_slice(&value)
                 .ok()
                 .map(|data| Transmit::new(Channel::Control, data));
         }
-        if let Some(data) = self.login_rx.poll_transmit() {
-            return Some(Transmit::new(Channel::Auth, data));
-        }
         if let Some(data) = self.login_tx.poll_transmit() {
             return Some(Transmit::new(Channel::Auth, data));
         }
-        if let Some(tx) = self.spec.as_mut().and_then(SpecChannel::poll_transmit) {
-            return Some(tx);
+        let tx = self
+            .spec
+            .as_mut()
+            .and_then(SpecChannel::poll_transmit)
+            .or_else(|| {
+                self.send_next_step();
+                self.spec.as_mut().and_then(SpecChannel::poll_transmit)
+            })?;
+        if tx.channel == Channel::SpecDown
+            && matches!(Frame::parse(&tx.data), Some(Frame::Single { .. }))
+        {
+            self.unacked_singles = self.unacked_singles.saturating_add(1);
         }
-        self.send_next_step();
-        self.spec.as_mut().and_then(SpecChannel::poll_transmit)
+        Some(tx)
     }
 
     /// Handles a login frame on the auth channel.
