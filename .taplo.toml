@@ -1,3 +1,6 @@
+# taplo does not read .gitignore; keep it out of build and virtualenv trees.
+exclude = [".venv/**", "dist/**", "target/**"]
+
 [formatting]
 align_entries = false
 array_auto_collapse = true
