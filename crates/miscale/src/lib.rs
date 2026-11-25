@@ -29,4 +29,4 @@ pub mod weight;
 
 pub use profile::Mid;
 pub use session::{Config, Event, Instant, Outcome, SessionError, Source, Stage, WeighSession};
-pub use weight::{Reading, Weight};
+pub use weight::{FinalReading, Reading, Weight};

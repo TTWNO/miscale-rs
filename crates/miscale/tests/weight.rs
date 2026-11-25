@@ -1,7 +1,7 @@
 //! Weight decoding and the stabiliser, against the prototype's rules.
 #![cfg(test)]
 
-use miscale::weight::{Reading, Stabiliser, Weight, decode, decode_final};
+use miscale::weight::{FinalReading, Reading, Stabiliser, Weight, decode, decode_final};
 
 /// A final frame holds `<len> a0 "a,b,<centi-kg>,d,e"` somewhere.
 #[test]
@@ -14,8 +14,9 @@ fn final_frames() {
     frame.push(u8::try_from(text.len()).unwrap()).unwrap();
     frame.push(0xa0).unwrap();
     frame.extend_from_slice(text).unwrap();
-    assert_eq!(decode_final(&frame), Some(Weight(8360)), "final");
-    assert_eq!(decode(&frame), Some(Reading::Final(Weight(8360))), "decode");
+    let reading = FinalReading::new(Weight(8360), 1_764_000_000);
+    assert_eq!(decode_final(&frame), Some(reading), "final");
+    assert_eq!(decode(&frame), Some(Reading::Final(reading)), "decode");
 }
 
 /// Final wins over a coincidental live marker; exact-fit and the five
@@ -32,12 +33,12 @@ fn final_rules() {
     .concat();
     assert_eq!(
         decode(&with_live_tail),
-        Some(Reading::Final(Weight(5545))),
+        Some(Reading::Final(FinalReading::new(Weight(5545), 5))),
         "final precedence"
     );
     assert_eq!(
         decode_final(&[&[12_u8, 0xa0][..], b"1,2,5545,4,5"].concat()),
-        Some(Weight(5545)),
+        Some(FinalReading::new(Weight(5545), 5)),
         "fits"
     );
     assert_eq!(
@@ -47,7 +48,7 @@ fn final_rules() {
     );
     assert_eq!(
         decode_final(&[&[13_u8, 0xa0][..], b"1,2,5545,4,5\n"].concat()),
-        Some(Weight(5545)),
+        Some(FinalReading::new(Weight(5545), 5)),
         "newline"
     );
     assert_eq!(
@@ -73,7 +74,17 @@ fn final_rules() {
     assert_eq!(
         decode_final(&[&[18_u8, 0xa0][..], b"1,2,99999999999,4,5"].concat()),
         None,
-        "over u32"
+        "weight over u32"
+    );
+    assert_eq!(
+        decode_final(&[&[21_u8, 0xa0][..], b"1,2,5545,4,4294967296"].concat()),
+        None,
+        "time over u32"
+    );
+    assert_eq!(
+        decode_final(&[&[21_u8, 0xa0][..], b"1,2,5545,4,4294967295"].concat()),
+        Some(FinalReading::new(Weight(5545), u32::MAX)),
+        "time at u32::MAX"
     );
 }
 

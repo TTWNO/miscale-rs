@@ -141,7 +141,7 @@ fn event_from_core(event: CoreEvent) -> Event {
 fn event_from_outcome(outcome: Outcome) -> Event {
     let finished = bare_event("finished");
     match outcome {
-        Outcome::Measured { weight, source } => Event {
+        Outcome::Measured { weight, source, .. } => Event {
             weight_centi_kg: Some(weight.centi_kg()),
             outcome: Some("measured"),
             source: Some(match source {

@@ -141,6 +141,9 @@ pub enum Outcome {
         weight: Weight,
         /// How it was obtained.
         source: Source,
+        /// For [`Source::Final`], the scale's timestamp of the measurement
+        /// (see [`FinalReading::scale_time`](crate::weight::FinalReading::scale_time)).
+        scale_time: Option<u32>,
     },
     /// Logged in, but nobody stood on the scale in time.
     NoMeasurement,
@@ -392,10 +395,11 @@ impl WeighSession {
             return;
         };
         match reading {
-            Reading::Final(weight) => {
+            Reading::Final(reading) => {
                 self.finish(Outcome::Measured {
-                    weight,
+                    weight: reading.weight,
                     source: Source::Final,
+                    scale_time: Some(reading.scale_time),
                 });
             }
             Reading::Live(weight) => {
@@ -404,6 +408,7 @@ impl WeighSession {
                     self.finish(Outcome::Measured {
                         weight,
                         source: Source::Estimated,
+                        scale_time: None,
                     });
                 }
             }

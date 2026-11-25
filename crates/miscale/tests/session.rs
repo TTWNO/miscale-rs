@@ -9,7 +9,7 @@ use miscale::session::{HELLO_BODY, HELLO_SEQ, PROFILE_SEQ};
 use miscale::{
     Config, Event, Instant, Mid, Outcome, SessionError, Source, Stage, WeighSession, Weight,
 };
-use miscale_sim::{SimConfig, SimPhase, SimScale, Step};
+use miscale_sim::{DEFAULT_DEVICE_TIME, SimConfig, SimPhase, SimScale, Step};
 use proptest::prelude::*;
 
 /// A synthetic token (miauth's published test vector).
@@ -129,7 +129,8 @@ fn final_weight() {
             Event::Live(Weight(8355)),
             Event::Finished(Outcome::Measured {
                 weight: Weight(8360),
-                source: Source::Final
+                source: Source::Final,
+                scale_time: Some(DEFAULT_DEVICE_TIME),
             }),
         ]
     );
@@ -182,7 +183,8 @@ fn estimated_weight() {
         outcome(&events),
         Outcome::Measured {
             weight: Weight(8357),
-            source: Source::Estimated
+            source: Source::Estimated,
+            scale_time: None,
         }
     );
     assert_eq!(
@@ -222,7 +224,8 @@ fn echo_before_ack() {
         outcome(&events),
         Outcome::Measured {
             weight: Weight(7000),
-            source: Source::Final
+            source: Source::Final,
+            scale_time: Some(DEFAULT_DEVICE_TIME),
         }
     );
 }
@@ -294,7 +297,26 @@ fn lost_fragment_on_the_spec_channel() {
         outcome(&events),
         Outcome::Measured {
             weight: Weight(6400),
-            source: Source::Final
+            source: Source::Final,
+            scale_time: Some(DEFAULT_DEVICE_TIME),
+        }
+    );
+}
+
+/// A final reading carries the scale's own timestamp of the weigh-in.
+#[test]
+fn final_reading_carries_scale_time() {
+    let mut config = SimConfig::new(token(), DEV_RAND);
+    config.device_time = 1_800_000_123;
+    let mut scale = SimScale::new(config, &[Step::Final(7000)]);
+    let mut session = session();
+    let events = run(&mut session, &mut scale, Instant(0));
+    assert_eq!(
+        outcome(&events),
+        Outcome::Measured {
+            weight: Weight(7000),
+            source: Source::Final,
+            scale_time: Some(1_800_000_123),
         }
     );
 }
@@ -312,7 +334,8 @@ fn unrelated_frames_are_ignored() {
         outcome(&events),
         Outcome::Measured {
             weight: Weight(5545),
-            source: Source::Final
+            source: Source::Final,
+            scale_time: Some(DEFAULT_DEVICE_TIME),
         }
     );
 }

@@ -6,7 +6,8 @@
 //!
 //! - **final**: a string TLV (`<len> a0 <ascii>`) whose text is five
 //!   comma-separated decimal numbers, e.g. `0,0,8360,2,1764000000`; the third
-//!   is the weight in hundredths of a kilogram;
+//!   is the weight in hundredths of a kilogram, the fifth the scale's
+//!   timestamp of the measurement;
 //! - **live**: a frame ending in the property `02 30 <u16 LE>`, the weight in
 //!   hundredths of a kilogram.
 //!
@@ -40,12 +41,32 @@ impl fmt::Display for Weight {
     }
 }
 
+/// The scale's stabilised measurement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct FinalReading {
+    /// The weight.
+    pub weight: Weight,
+    /// When the scale took it: seconds since the Unix epoch by the scale's
+    /// clock. The same weigh-in carries the same timestamp wherever it is
+    /// reported, so this tells weigh-ins apart.
+    pub scale_time: u32,
+}
+
+impl FinalReading {
+    /// A final reading.
+    #[must_use]
+    pub const fn new(weight: Weight, scale_time: u32) -> Self {
+        Self { weight, scale_time }
+    }
+}
+
 /// A weight found in a frame, and which kind of reading it was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Reading {
     /// The stabilised measurement.
-    Final(Weight),
+    Final(FinalReading),
     /// A value streamed while the load settles.
     Live(Weight),
 }
@@ -62,9 +83,10 @@ pub fn decode(plaintext: &[u8]) -> Option<Reading> {
 }
 
 /// Finds a final reading: the first string TLV that fits exactly and holds
-/// five comma-separated decimal numbers.
+/// five comma-separated decimal numbers, the weight and timestamp within
+/// `u32`.
 #[must_use]
-pub fn decode_final(plaintext: &[u8]) -> Option<Weight> {
+pub fn decode_final(plaintext: &[u8]) -> Option<FinalReading> {
     plaintext.windows(2).enumerate().find_map(|(at, pair)| {
         let &[len, kind] = <&[u8; 2]>::try_from(pair).ok()?;
         if kind != STRING_TYPE {
@@ -76,24 +98,23 @@ pub fn decode_final(plaintext: &[u8]) -> Option<Weight> {
     })
 }
 
-/// Parses `a,b,<centi-kg>,d,e` (decimal digits only; one trailing newline
-/// allowed, as the prototype's regular expression did).
-fn parse_final_text(text: &[u8]) -> Option<Weight> {
+/// Parses `a,b,<centi-kg>,d,<scale time>` (decimal digits only; one
+/// trailing newline allowed, as the prototype's regular expression did).
+fn parse_final_text(text: &[u8]) -> Option<FinalReading> {
     let text = text.strip_suffix(b"\n").unwrap_or(text);
     let mut fields = text.split(|&byte| byte == b',');
-    let mut weight = None;
-    for position in 0_u8..5 {
-        let value = parse_decimal(fields.next()?)?;
-        if position == 2 {
-            weight = Some(value);
-        }
+    let mut values = [0_u64; 5];
+    for value in &mut values {
+        *value = parse_decimal(fields.next()?)?;
     }
     if fields.next().is_some() {
         return None;
     }
-    weight
-        .and_then(|value| u32::try_from(value).ok())
-        .map(Weight)
+    let [_, _, weight, _, scale_time] = values;
+    Some(FinalReading::new(
+        Weight(u32::try_from(weight).ok()?),
+        u32::try_from(scale_time).ok()?,
+    ))
 }
 
 /// Parses a non-empty run of ASCII digits (as `u64`, saturating to `None`).
