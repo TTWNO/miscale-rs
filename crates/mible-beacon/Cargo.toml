@@ -1,0 +1,22 @@
+[package]
+name = "mible-beacon"
+description = "Sans-io, no_std codec for Xiaomi MiBeacon advertisements, with v4/v5 decryption"
+readme = "README.md"
+keywords = ["xiaomi", "ble", "mibeacon", "no-std", "advertisement"]
+categories = ["embedded", "network-programming", "no-std::no-alloc"]
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+heapless = { workspace = true }
+mible-crypto = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

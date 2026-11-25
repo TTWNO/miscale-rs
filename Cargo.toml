@@ -18,6 +18,7 @@ heapless = { version = "0.9.4", default-features = false }
 hkdf = { version = "0.13.0", default-features = false }
 hmac = { version = "0.13.0", default-features = false, features = ["zeroize"] }
 mible-auth = { path = "crates/mible-auth" }
+mible-beacon = { path = "crates/mible-beacon" }
 mible-crypto = { path = "crates/mible-crypto" }
 mible-spec = { path = "crates/mible-spec" }
 mible-transport = { path = "crates/mible-transport" }

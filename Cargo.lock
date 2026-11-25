@@ -248,6 +248,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mible-beacon"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "mible-crypto",
+ "proptest",
+]
+
+[[package]]
 name = "mible-crypto"
 version = "0.1.0"
 dependencies = [

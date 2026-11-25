@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 0f6b950ad23f5cd6f07ba0a10b839230585e24a08323e93132483906ac3a35c9 # shrinks to header = Header { frame_control: FrameControl(16384), product_id: 0, frame_counter: 0, mac: None, capability: Some(0), io_capability: None }, objects = [], key = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], address = [0, 0, 0, 0, 0, 0], ext_counter = [0, 0, 0], flip = Index(5030930201920786805), bit = 0
