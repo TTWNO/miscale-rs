@@ -10,17 +10,24 @@ from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
 )
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+    OptionsFlowWithReload,
+)
 from homeassistant.const import CONF_ADDRESS
+from homeassistant.core import callback
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
-from .const import CONF_TOKEN, DOMAIN, MODEL
+from .const import CONF_MID, CONF_TOKEN, DOMAIN, MODEL
 from .mibeacon import is_s200
 from .native import native
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from .coordinator import MiScaleConfigEntry
 
 TOKEN_SCHEMA = probatio.Schema(
     {
@@ -132,4 +139,41 @@ class MiScaleConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
         return self.async_show_form(
             step_id="reauth_confirm", data_schema=TOKEN_SCHEMA, errors=errors
+        )
+
+    @staticmethod
+    @callback
+    @override
+    def async_get_options_flow(config_entry: MiScaleConfigEntry) -> OptionsFlow:
+        """Options: the account id sent to the scale."""
+        return MiScaleOptionsFlow()
+
+
+class MiScaleOptionsFlow(OptionsFlowWithReload):
+    """Change the account id (mid) sent in the profile.
+
+    Reloads the entry only when the options actually change: an update
+    listener would also reload on unrelated updates (Bluetooth discovery
+    refreshing the entry's discovery keys), which would start a second
+    weigh-in from the replayed advertisement.
+    """
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Show and save the options."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            mid = str(user_input.get(CONF_MID, "")).strip()
+            if not mid:
+                return self.async_create_entry(data={})
+            try:
+                native.validate_mid(mid)
+            except ValueError:
+                errors[CONF_MID] = "invalid_mid"
+            else:
+                return self.async_create_entry(data={CONF_MID: mid})
+        current = self.config_entry.options.get(CONF_MID, "")
+        return self.async_show_form(
+            step_id="init",
+            data_schema=probatio.Schema({probatio.Optional(CONF_MID, default=current): str}),
+            errors=errors,
         )

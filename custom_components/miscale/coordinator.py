@@ -23,7 +23,7 @@ from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_TOKEN, DOMAIN, POLL_COOLDOWN_SECONDS
+from .const import CONF_MID, CONF_TOKEN, DOMAIN, POLL_COOLDOWN_SECONDS
 from .mibeacon import is_s200
 from .runner import SessionRunner, new_session
 
@@ -114,7 +114,7 @@ class MiScaleCoordinator(ActiveBluetoothDataUpdateCoordinator[MiScaleData]):
         self._running = True
         self.data = replace(self.data, live_kg=None)
         try:
-            session = new_session(self._entry.data[CONF_TOKEN], None)
+            session = new_session(self._entry.data[CONF_TOKEN], self._entry.options.get(CONF_MID))
             runner: SessionRunner | None = None
 
             def disconnected(_client: BleakClientWithServiceCache) -> None:

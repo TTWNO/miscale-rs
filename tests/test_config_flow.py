@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from custom_components.miscale.const import CONF_TOKEN, DOMAIN
+from custom_components.miscale.const import CONF_MID, CONF_TOKEN, DOMAIN
 from homeassistant.config_entries import SOURCE_BLUETOOTH, SOURCE_USER
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import FlowResultType
@@ -103,3 +103,22 @@ async def test_reauth(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reauth_successful"
     assert entry.data[CONF_TOKEN] == new_token
+
+
+async def test_options(hass: HomeAssistant) -> None:
+    """The account id must be digits; an empty one clears it."""
+    entry = config_entry()
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["step_id"] == "init"
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {CONF_MID: "12a"})
+    assert result["errors"] == {CONF_MID: "invalid_mid"}
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_MID: " 4242 "}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {CONF_MID: "4242"}
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {CONF_MID: ""})
+    assert entry.options == {}

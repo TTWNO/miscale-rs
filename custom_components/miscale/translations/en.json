@@ -67,5 +67,20 @@
     "no_connectable_device": {
       "message": "No connectable Bluetooth adapter or proxy is in range of {address}."
     }
+  },
+  "options": {
+    "error": {
+      "invalid_mid": "The account id must be 1 to 20 decimal digits."
+    },
+    "step": {
+      "init": {
+        "data": {
+          "mid": "Account id (mid)"
+        },
+        "data_description": {
+          "mid": "Xiaomi account id sent to the scale with each weigh-in. Leave empty unless the scale ignores the default."
+        }
+      }
+    }
   }
 }
