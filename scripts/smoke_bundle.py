@@ -3,8 +3,8 @@
 Meant to run inside a bare Alpine CPython container (the libc and Python of
 Home Assistant OS and the official container), with only the standard
 library. It unpacks the archive, then imports the native module through the
-integration's own loader (native.py), as Home Assistant would, and drives
-the first step of a weigh session.
+integration's own loader (native.py), as Home Assistant would, drives the
+first step of a weigh session and reads an advertisement.
 
 usage: python scripts/smoke_bundle.py dist/miscale.zip
 """
@@ -17,6 +17,13 @@ import platform
 import sys
 import tempfile
 import zipfile
+
+# xiaomi-ble's captured Smart Scale S200 weigh-in (a test device's published
+# key, not ours) and the weight it holds.
+CAPTURED_KEY = "653b1b10e1cb35e4ac5e60fa45f3bf29"  # gitleaks:allow
+CAPTURED_ADDRESS = "D0:7B:6F:27:D7:29"
+CAPTURED = bytes.fromhex("4859044c019a80a275939010f0abc4fadc0600003d29c044")
+CAPTURED_CENTI_KG = 6225
 
 
 def main() -> int:
@@ -47,7 +54,12 @@ def main() -> int:
         if first != (0x10, bytes([0x24, 0, 0, 0])):
             print(f"unexpected first write: {first!r}")  # noqa: T201
             return 1
-        if hasattr(module, "SimulatedScale"):
+        beacon = module.BeaconReader(CAPTURED_KEY, CAPTURED_ADDRESS).read(CAPTURED)
+        weigh_in = None if beacon is None else beacon.weigh_in
+        if weigh_in is None or weigh_in.weight_centi_kg != CAPTURED_CENTI_KG:
+            print(f"unexpected beacon: {beacon!r}")  # noqa: T201
+            return 1
+        if hasattr(module, "SimulatedScale") or hasattr(module, "simulated_advertisement"):
             print("the test simulator must not ship")  # noqa: T201
             return 1
         print(f"ok: {platform.machine()} {module.__version__} from {path.name}")  # noqa: T201

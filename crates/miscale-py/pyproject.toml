@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "miscale-native"
-description = "Python bindings for the miscale sans-io weigh session (Xiaomi Smart Scale S200)"
+description = "Python bindings for the miscale sans-io weigh session and advertisement reader (Xiaomi Smart Scale S200)"
 requires-python = ">=3.12"
 license = "MIT OR Apache-2.0"
 dynamic = ["version"]

@@ -1,13 +1,15 @@
-//! Python bindings for the [`miscale`] weigh session.
+//! Python bindings for the [`miscale`] weigh session and advertisements.
 //!
-//! The module performs no I/O: Python feeds notifications in and writes out
-//! what the session asks for. Secrets (the token, session keys) never cross
-//! into Python except as the token string the caller already holds; errors
-//! never echo them.
+//! The module performs no I/O: Python feeds notifications and advertisements
+//! in and writes out what the session asks for. Secrets (the token, the
+//! beacon key, session keys) never cross into Python except as the strings
+//! the caller already holds; errors never echo them.
 
 use mible_auth::LoginError;
-use mible_crypto::Token;
+use mible_beacon::{Advertisement, DecryptError};
+use mible_crypto::{BeaconCipher, BeaconKey, Token};
 use mible_transport::Channel;
+use miscale::beacon::BeaconError;
 use miscale::{Config, Event as CoreEvent, Instant, Mid, Outcome, SessionError, Source};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -19,6 +21,29 @@ const SERVICE_UUID16: u16 = 0xFE95;
 /// Parses a token, mapping errors to `ValueError` without echoing input.
 fn parse_token(token_hex: &str) -> PyResult<Token> {
     Token::from_hex(token_hex).map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+/// Parses a beacon key, mapping errors to `ValueError` without echoing input.
+fn parse_beacon_key(beacon_key_hex: &str) -> PyResult<BeaconKey> {
+    BeaconKey::from_hex(beacon_key_hex).map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+/// Parses a Bluetooth address (`AA:BB:CC:DD:EE:FF`, either case).
+fn parse_address(address: &str) -> PyResult<[u8; 6]> {
+    let invalid = || PyValueError::new_err("address must be six colon-separated hex bytes");
+    let mut bytes = [0_u8; 6];
+    let mut parts = address.split(':');
+    for byte in &mut bytes {
+        let part = parts.next().ok_or_else(invalid)?;
+        if part.len() != 2 || !part.bytes().all(|digit| digit.is_ascii_hexdigit()) {
+            return Err(invalid());
+        }
+        *byte = u8::from_str_radix(part, 16).map_err(|_not_hex| invalid())?;
+    }
+    if parts.next().is_some() {
+        return Err(invalid());
+    }
+    Ok(bytes)
 }
 
 /// Parses an account id, mapping errors to `ValueError` without echoing input.
@@ -42,6 +67,12 @@ fn channel(uuid16: u16) -> PyResult<Channel> {
 #[pyfunction]
 fn validate_token(token_hex: &str) -> PyResult<()> {
     parse_token(token_hex).map(drop)
+}
+
+/// Raises `ValueError` unless `beacon_key_hex` is 32 hexadecimal digits.
+#[pyfunction]
+fn validate_beacon_key(beacon_key_hex: &str) -> PyResult<()> {
+    parse_beacon_key(beacon_key_hex).map(drop)
 }
 
 /// Raises `ValueError` unless `mid` is 1 to 20 decimal digits.
@@ -68,6 +99,10 @@ struct Event {
     /// For a measurement: `"final"` or `"estimated"`.
     #[pyo3(get)]
     source: Option<&'static str>,
+    /// For a `"final"` measurement: the scale's timestamp of it (seconds
+    /// since the Unix epoch by the scale's clock).
+    #[pyo3(get)]
+    scale_time: Option<u32>,
     /// For a failure: a human-readable reason (never contains secrets).
     #[pyo3(get)]
     error: Option<String>,
@@ -82,12 +117,13 @@ impl Event {
     /// Python-style representation, e.g. `Event(kind='live', weight_centi_kg=8360, …)`.
     fn __repr__(&self) -> String {
         format!(
-            "Event(kind={}, weight_centi_kg={}, outcome={}, source={}, error={}, reason={})",
+            "Event(kind={}, weight_centi_kg={}, outcome={}, source={}, scale_time={}, error={}, \
+             reason={})",
             py_repr(Some(self.kind)),
-            self.weight_centi_kg
-                .map_or_else(|| "None".to_owned(), |centi| centi.to_string()),
+            int_repr(self.weight_centi_kg),
             py_repr(self.outcome),
             py_repr(self.source),
+            int_repr(self.scale_time),
             py_repr(self.error.as_deref()),
             py_repr(self.reason),
         )
@@ -100,6 +136,11 @@ fn py_repr(value: Option<&str>) -> String {
         || "None".to_owned(),
         |text| format!("'{}'", text.escape_default()),
     )
+}
+
+/// Formats an optional integer the way Python's `repr` would.
+fn int_repr(value: Option<u32>) -> String {
+    value.map_or_else(|| "None".to_owned(), |number| number.to_string())
 }
 
 /// Classifies a failure for code to act on.
@@ -119,6 +160,7 @@ const fn bare_event(kind: &'static str) -> Event {
         weight_centi_kg: None,
         outcome: None,
         source: None,
+        scale_time: None,
         error: None,
         reason: None,
     }
@@ -141,13 +183,18 @@ fn event_from_core(event: CoreEvent) -> Event {
 fn event_from_outcome(outcome: Outcome) -> Event {
     let finished = bare_event("finished");
     match outcome {
-        Outcome::Measured { weight, source, .. } => Event {
+        Outcome::Measured {
+            weight,
+            source,
+            scale_time,
+        } => Event {
             weight_centi_kg: Some(weight.centi_kg()),
             outcome: Some("measured"),
             source: Some(match source {
                 Source::Final => "final",
                 Source::Estimated | _ => "estimated",
             }),
+            scale_time,
             ..finished
         },
         Outcome::NoMeasurement => Event {
@@ -252,6 +299,132 @@ impl WeighSession {
     }
 }
 
+/// A weigh-in the scale broadcast. Immutable.
+#[pyclass(module = "miscale_native", frozen, eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WeighIn {
+    /// The weight in hundredths of a kilogram.
+    #[pyo3(get)]
+    weight_centi_kg: u32,
+    /// The scale's timestamp of the weigh-in (seconds since the Unix epoch
+    /// by the scale's clock); the same weigh-in reported over a connection
+    /// carries the same one.
+    #[pyo3(get)]
+    scale_time: u32,
+    /// The scale's user profile the weigh-in was attributed to.
+    #[pyo3(get)]
+    profile: u8,
+}
+
+#[pymethods]
+impl WeighIn {
+    /// Python-style representation.
+    fn __repr__(&self) -> String {
+        format!(
+            "WeighIn(weight_centi_kg={}, scale_time={}, profile={})",
+            self.weight_centi_kg, self.scale_time, self.profile
+        )
+    }
+}
+
+/// What an S200 advertisement says. Immutable.
+#[pyclass(module = "miscale_native", frozen, eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Beacon {
+    /// The MiBeacon product id.
+    #[pyo3(get)]
+    product_id: u16,
+    /// Changes with each new advertisement.
+    #[pyo3(get)]
+    frame_counter: u8,
+    /// Whether the payload was encrypted.
+    #[pyo3(get)]
+    encrypted: bool,
+    /// Whether the payload decrypted under the beacon key. An encrypted
+    /// payload that does not means the key (or address) is wrong, or the
+    /// advertisement was forged.
+    #[pyo3(get)]
+    authentic: bool,
+    /// The weigh-in it broadcast, if any (only from authentic payloads).
+    #[pyo3(get)]
+    weigh_in: Option<WeighIn>,
+}
+
+#[pymethods]
+impl Beacon {
+    /// Python-style representation.
+    fn __repr__(&self) -> String {
+        format!(
+            "Beacon(product_id={:#06x}, frame_counter={}, encrypted={}, authentic={}, \
+             weigh_in={})",
+            self.product_id,
+            self.frame_counter,
+            py_bool(self.encrypted),
+            py_bool(self.authentic),
+            self.weigh_in
+                .as_ref()
+                .map_or_else(|| "None".to_owned(), WeighIn::__repr__),
+        )
+    }
+}
+
+/// Formats a boolean the way Python's `repr` would.
+const fn py_bool(value: bool) -> &'static str {
+    if value { "True" } else { "False" }
+}
+
+/// Reads one S200's advertisements with its beacon key, which stays on the
+/// Rust side.
+#[pyclass(module = "miscale_native", frozen)]
+struct BeaconReader {
+    /// The keyed cipher.
+    cipher: BeaconCipher,
+    /// The scale's address, display order.
+    address: [u8; 6],
+}
+
+#[pymethods]
+impl BeaconReader {
+    /// A reader for the scale at `address` (`AA:BB:CC:DD:EE:FF`).
+    #[new]
+    fn new(beacon_key_hex: &str, address: &str) -> PyResult<Self> {
+        let address = parse_address(address)?;
+        let key = parse_beacon_key(beacon_key_hex)?;
+        Ok(Self {
+            cipher: BeaconCipher::new(&key),
+            address,
+        })
+    }
+
+    /// Reads MiBeacon service data; `None` unless it is an S200's frame
+    /// from this address.
+    fn read(&self, service_data: &[u8]) -> Option<Beacon> {
+        let header = Advertisement::parse(service_data).ok()?.header;
+        let beacon = |encrypted, authentic, weigh_in| Beacon {
+            product_id: header.product_id,
+            frame_counter: header.frame_counter,
+            encrypted,
+            authentic,
+            weigh_in,
+        };
+        match miscale::beacon::read(service_data, &self.cipher, self.address) {
+            Ok(read) => Some(beacon(
+                read.encrypted,
+                read.encrypted,
+                read.weigh_in.map(|weigh_in| WeighIn {
+                    weight_centi_kg: weigh_in.weight.centi_kg(),
+                    scale_time: weigh_in.scale_time,
+                    profile: weigh_in.profile,
+                }),
+            )),
+            Err(BeaconError::Decrypt(DecryptError::Authentication)) => {
+                Some(beacon(true, false, None))
+            }
+            Err(_other) => None,
+        }
+    }
+}
+
 /// A simulated S200 for tests (only with the `sim` feature).
 #[cfg(feature = "sim")]
 #[pyclass(module = "miscale_native")]
@@ -266,7 +439,10 @@ impl SimulatedScale {
     /// A scale bound with `token_hex` that plays `script`, a list of
     /// `("live" | "final", centi_kg)` pairs.
     #[new]
-    #[pyo3(signature = (token_hex, dev_rand, script, *, echo_hello = true, refuse_login = false))]
+    #[pyo3(signature = (
+        token_hex, dev_rand, script, *, echo_hello = true, refuse_login = false,
+        device_time = miscale_sim::DEFAULT_DEVICE_TIME
+    ))]
     #[expect(
         clippy::needless_pass_by_value,
         reason = "PyO3 extracts a Python list as a Vec"
@@ -277,6 +453,7 @@ impl SimulatedScale {
         script: Vec<(String, u32)>,
         echo_hello: bool,
         refuse_login: bool,
+        device_time: u32,
     ) -> PyResult<Self> {
         let mut config = miscale_sim::SimConfig::new(
             parse_token(token_hex)?,
@@ -284,6 +461,7 @@ impl SimulatedScale {
         );
         config.echo_hello = echo_hello;
         config.refuse_login = refuse_login;
+        config.device_time = device_time;
         let steps = script
             .iter()
             .map(|(kind, centi)| match kind.as_str() {
@@ -315,6 +493,29 @@ impl SimulatedScale {
     }
 }
 
+/// The service data a simulated S200 at `address` broadcasts: idle, or a
+/// `(centi_kg, scale_time)` weigh-in encrypted under the beacon key (only
+/// with the `sim` feature).
+#[cfg(feature = "sim")]
+#[pyfunction]
+#[pyo3(signature = (beacon_key_hex, address, frame_counter, weigh_in = None))]
+fn simulated_advertisement<'py>(
+    py: Python<'py>,
+    beacon_key_hex: &str,
+    address: &str,
+    frame_counter: u8,
+    weigh_in: Option<(u32, u32)>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let frame = miscale_sim::advertisement(
+        &parse_beacon_key(beacon_key_hex)?,
+        parse_address(address)?,
+        frame_counter,
+        weigh_in,
+    )
+    .map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok(PyBytes::new(py, &frame))
+}
+
 /// The `miscale_native` Python module.
 #[pymodule]
 fn miscale_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -323,9 +524,15 @@ fn miscale_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     module.add_function(wrap_pyfunction!(validate_token, module)?)?;
     module.add_function(wrap_pyfunction!(validate_mid, module)?)?;
+    module.add_function(wrap_pyfunction!(validate_beacon_key, module)?)?;
     module.add_class::<Event>()?;
     module.add_class::<WeighSession>()?;
+    module.add_class::<Beacon>()?;
+    module.add_class::<BeaconReader>()?;
+    module.add_class::<WeighIn>()?;
     #[cfg(feature = "sim")]
     module.add_class::<SimulatedScale>()?;
+    #[cfg(feature = "sim")]
+    module.add_function(wrap_pyfunction!(simulated_advertisement, module)?)?;
     Ok(())
 }

@@ -306,6 +306,7 @@ name = "miscale-py"
 version = "0.1.0"
 dependencies = [
  "mible-auth",
+ "mible-beacon",
  "mible-crypto",
  "mible-transport",
  "miscale",

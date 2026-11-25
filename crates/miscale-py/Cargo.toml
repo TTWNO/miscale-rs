@@ -1,6 +1,6 @@
 [package]
 name = "miscale-py"
-description = "Python bindings (PyO3) for the miscale sans-io weigh session"
+description = "Python bindings (PyO3) for the miscale sans-io weigh session and advertisement reader"
 readme = "README.md"
 keywords = ["xiaomi", "scale", "python", "pyo3", "home-assistant"]
 categories = ["api-bindings"]
@@ -25,6 +25,7 @@ sim = ["dep:miscale-sim"]
 
 [dependencies]
 mible-auth = { workspace = true }
+mible-beacon = { workspace = true }
 mible-crypto = { workspace = true }
 mible-transport = { workspace = true }
 miscale = { workspace = true }
