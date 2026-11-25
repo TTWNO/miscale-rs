@@ -5,6 +5,8 @@ use core::str::FromStr;
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::hex::{HexError, decode_into};
+
 /// Length of a login token in bytes.
 pub const TOKEN_LEN: usize = 12;
 
@@ -30,18 +32,11 @@ impl Token {
     /// [`TokenParseError::Length`] unless the input is exactly 24
     /// characters, [`TokenParseError::NotHex`] if any is not a hex digit.
     pub fn from_hex(hex: &str) -> Result<Self, TokenParseError> {
-        let digits = hex.as_bytes();
-        if digits.len() != 2 * TOKEN_LEN {
-            return Err(TokenParseError::Length);
-        }
         let mut bytes = [0_u8; TOKEN_LEN];
-        for (byte, &[high, low]) in bytes.iter_mut().zip(digits.as_chunks::<2>().0) {
-            let (Some(high), Some(low)) = (nibble(high), nibble(low)) else {
-                bytes.zeroize();
-                return Err(TokenParseError::NotHex);
-            };
-            *byte = high.wrapping_shl(4) | low;
-        }
+        decode_into(hex, &mut bytes).map_err(|err| match err {
+            HexError::Length => TokenParseError::Length,
+            HexError::NotHex => TokenParseError::NotHex,
+        })?;
         let token = Self(bytes);
         bytes.zeroize();
         Ok(token)
@@ -65,22 +60,6 @@ impl FromStr for Token {
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Token(<redacted>)")
-    }
-}
-
-/// Value of one ASCII hex digit.
-const fn nibble(digit: u8) -> Option<u8> {
-    match digit {
-        b'0'..=b'9' => digit.checked_sub(b'0'),
-        b'a'..=b'f' => match digit.checked_sub(b'a') {
-            Some(value) => value.checked_add(10),
-            None => None,
-        },
-        b'A'..=b'F' => match digit.checked_sub(b'A') {
-            Some(value) => value.checked_add(10),
-            None => None,
-        },
-        _ => None,
     }
 }
 

@@ -9,6 +9,11 @@
 //! clock, no randomness (callers pass the randoms in), no allocator.
 #![no_std]
 
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "rustc's `unreachable_pub` asks for `pub(crate)` in a private module"
+)]
+mod hex;
 pub mod login;
 pub mod session;
 pub mod token;
