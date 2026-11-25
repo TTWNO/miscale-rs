@@ -7,9 +7,12 @@
 //! no clock and never allocates.
 #![no_std]
 
+pub mod channel;
 pub mod frame;
 pub mod rx;
 pub mod tx;
+
+pub use channel::{Channel, Transmit};
 
 /// Largest GATT value this crate writes: one ATT write at the default MTU.
 pub const MAX_PACKET_LEN: usize = 20;
