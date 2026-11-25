@@ -1,0 +1,10 @@
+# `msrv` is taken from `rust-version` in Cargo.toml.
+allow-dbg-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-unwrap-in-tests = true
+# Nothing here is published yet; prefer the right API over a stable one.
+avoid-breaking-exported-api = false
+doc-valid-idents = ["MiBeacon", "PyO3", "ESPHome", "BlueZ", ".."]

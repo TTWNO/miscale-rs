@@ -1,0 +1,8 @@
+# zizmor configuration: https://docs.zizmor.sh/configuration/
+rules:
+  self-repository:
+    # GitHub's `uses: $/…` self-repository syntax is not understood by act
+    # (0.2.98: "Expected format {org}/{repo}[/path]@ref"), and running the
+    # workflow locally with act before pushing is a project requirement.
+    # Revisit when act supports it.
+    disable: true

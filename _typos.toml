@@ -1,0 +1,6 @@
+[default]
+# Hex dumps of protocol frames are not words.
+extend-ignore-re = ["\\b[0-9a-fA-F]{2}( [0-9a-fA-F]{2})+\\b", "\\b[0-9a-fA-F]{8,}\\b"]
+
+[files]
+extend-exclude = ["Cargo.lock", "uv.lock"]

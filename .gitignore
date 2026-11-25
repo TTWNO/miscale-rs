@@ -1,0 +1,21 @@
+/target/
+/dist/
+/.venv/
+__pycache__/
+*.py[cod]
+*.so
+.coverage
+/htmlcov/
+/lcov.info
+/fuzz/artifacts/
+/fuzz/corpus/
+/fuzz/coverage/
+# Never commit captures or key material, even by accident.
+*.btsnoop
+*.log
+*.pcap
+*.pcapng
+*.cfa
+btsnoop_hci*
+/secrets/
+.env

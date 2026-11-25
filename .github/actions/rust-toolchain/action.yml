@@ -1,0 +1,45 @@
+name: Rust toolchain
+description: >-
+  Install rustup if the runner lacks it (e.g. local `act` images), then the
+  toolchain pinned in rust-toolchain.toml, or an explicit extra toolchain.
+inputs:
+  toolchain:
+    description: Extra toolchain to install (e.g. nightly, 1.89). Empty = rust-toolchain.toml only.
+    required: false
+    default: ""
+  components:
+    description: Comma-separated components for the extra toolchain.
+    required: false
+    default: ""
+  targets:
+    description: Comma-separated targets to add to the pinned (or extra) toolchain.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Install rustup and toolchain
+      shell: bash
+      env:
+        EXTRA_TOOLCHAIN: ${{ inputs.toolchain }}
+        EXTRA_COMPONENTS: ${{ inputs.components }}
+        EXTRA_TARGETS: ${{ inputs.targets }}
+      run: |
+        set -euo pipefail
+        if ! command -v rustup >/dev/null 2>&1; then
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+        fi
+        rustup toolchain install
+        if [ -n "$EXTRA_TOOLCHAIN" ]; then
+          args=(--profile minimal)
+          [ -n "$EXTRA_COMPONENTS" ] && args+=(--component "$EXTRA_COMPONENTS")
+          [ -n "$EXTRA_TARGETS" ] && args+=(--target "$EXTRA_TARGETS")
+          rustup toolchain install "$EXTRA_TOOLCHAIN" "${args[@]}"
+        elif [ -n "$EXTRA_TARGETS" ]; then
+          rustup target add ${EXTRA_TARGETS//,/ }
+        fi
+        rustc --version
+        cargo --version

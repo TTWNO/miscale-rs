@@ -1,0 +1,15 @@
+# Runner image for running the CI workflow locally with `act` (`make ci`).
+#
+# GitHub's hosted ubuntu runners ship rustup; catthehacker's act image does
+# not, and downloading toolchains in every job is slow. This adds rustup and
+# the toolchains the workflow asks for. Build it with `make act-image`.
+FROM docker.io/catthehacker/ubuntu:act-latest
+ENV RUSTUP_HOME=/opt/rustup \
+    CARGO_HOME=/opt/cargo \
+    PATH=/opt/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable -c clippy,rustfmt \
+ && rustup toolchain install 1.89 --profile minimal \
+ && rustup toolchain install nightly --profile minimal \
+ && rustup target add thumbv7em-none-eabihf \
+ && chmod -R a+rwX /opt/rustup /opt/cargo

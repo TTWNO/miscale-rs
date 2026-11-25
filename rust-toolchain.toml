@@ -1,0 +1,6 @@
+# Day-to-day builds, lints and tests run on stable; jobs that need nightly
+# (Miri, fuzzing) ask for it explicitly with `+nightly`.
+[toolchain]
+channel = "stable"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
