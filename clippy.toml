@@ -7,4 +7,4 @@ allow-print-in-tests = true
 allow-unwrap-in-tests = true
 # Nothing here is published yet; prefer the right API over a stable one.
 avoid-breaking-exported-api = false
-doc-valid-idents = ["MiBeacon", "PyO3", "ESPHome", "BlueZ", ".."]
+doc-valid-idents = ["MiBeacon", "MIoT", "PyO3", "ESPHome", "BlueZ", ".."]

@@ -253,6 +253,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mible-spec"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+]
+
+[[package]]
 name = "mible-transport"
 version = "0.1.0"
 dependencies = [

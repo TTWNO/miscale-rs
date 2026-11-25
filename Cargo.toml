@@ -19,6 +19,7 @@ hkdf = { version = "0.13.0", default-features = false }
 hmac = { version = "0.13.0", default-features = false }
 mible-auth = { path = "crates/mible-auth" }
 mible-crypto = { path = "crates/mible-crypto" }
+mible-spec = { path = "crates/mible-spec" }
 mible-transport = { path = "crates/mible-transport" }
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 sha2 = { version = "0.11.1", default-features = false }
