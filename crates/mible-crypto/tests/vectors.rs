@@ -1,10 +1,12 @@
 //! Known-answer tests.
 //!
 //! The login vector is miauth's published test vector (a synthetic token,
-//! not a real device's).
+//! not a real device's). The session-cipher vectors were generated from it
+//! independently with Python's `cryptography` package (`AESCCM`, tag 4),
+//! using the nonce layout `iv ‖ 00000000 ‖ counter (u32 LE)`.
 #![cfg(test)]
 
-use mible_crypto::{LoginKeys, ProofMismatch, Token};
+use mible_crypto::{LoginKeys, ProofMismatch, Role, SessionCipher, SessionError, Token};
 
 /// Decodes a hex string.
 fn hex(text: &str) -> Vec<u8> {
@@ -94,10 +96,116 @@ fn proof_verification() {
     );
 }
 
+/// Sealing the hello frame and its echo gives the independently computed bytes.
+#[test]
+fn session_vectors() {
+    let keys = LoginKeys::derive(&token(), &app_rand(), &dev_rand());
+    let app = SessionCipher::new(&keys, Role::App);
+    let device = SessionCipher::new(&keys, Role::Device);
+    let hello = hex("05200200f0");
+    let mut out = heapless::Vec::<u8, 64>::new();
+
+    app.seal(0, &hello, &mut out).unwrap();
+    assert_eq!(
+        out.to_vec(),
+        hex("00000e5e875c5e89a88170"),
+        "app hello, counter 0"
+    );
+    device.seal(1, &hello, &mut out).unwrap();
+    assert_eq!(
+        out.to_vec(),
+        hex("01006d240755b0d36977d5"),
+        "device echo, counter 1"
+    );
+    let twenty: Vec<u8> = (0..20).collect();
+    app.seal(0x1234, &twenty, &mut out).unwrap();
+    assert_eq!(
+        out.to_vec(),
+        hex("3412a5187731a4d1975a5490a866bb82673d719b531f5e705c18"),
+        "counter in both nonce bytes"
+    );
+}
+
+/// Each end opens what the other sealed; the counter comes back.
+#[test]
+fn session_round_trip() {
+    let keys = LoginKeys::derive(&token(), &app_rand(), &dev_rand());
+    let app = SessionCipher::new(&keys, Role::App);
+    let device = SessionCipher::new(&keys, Role::Device);
+    let mut wire = heapless::Vec::<u8, 64>::new();
+    let mut plain = heapless::Vec::<u8, 64>::new();
+    device.seal(7, b"weight", &mut wire).unwrap();
+    assert_eq!(app.open(&wire, &mut plain), Ok(7), "counter");
+    assert_eq!(plain.as_slice(), b"weight", "plaintext");
+    app.seal(8, b"", &mut wire).unwrap();
+    assert_eq!(device.open(&wire, &mut plain), Ok(8), "empty plaintext");
+    assert!(plain.is_empty(), "empty");
+}
+
+/// Tampering, the wrong direction, and truncation are all rejected, and the
+/// output buffer is left empty.
+#[test]
+fn session_rejects() {
+    let keys = LoginKeys::derive(&token(), &app_rand(), &dev_rand());
+    let app = SessionCipher::new(&keys, Role::App);
+    let device = SessionCipher::new(&keys, Role::Device);
+    let mut wire = heapless::Vec::<u8, 64>::new();
+    let mut plain = heapless::Vec::<u8, 64>::new();
+    device.seal(1, b"hello", &mut wire).unwrap();
+
+    let mut tampered = wire.clone();
+    tampered[3] ^= 0x80;
+    assert_eq!(
+        app.open(&tampered, &mut plain),
+        Err(SessionError::Crypto),
+        "ciphertext"
+    );
+    assert!(plain.is_empty(), "cleared on failure");
+    let mut recounted = wire.clone();
+    recounted[0] = 2;
+    assert_eq!(
+        app.open(&recounted, &mut plain),
+        Err(SessionError::Crypto),
+        "counter"
+    );
+    assert_eq!(
+        device.open(&wire, &mut plain),
+        Err(SessionError::Crypto),
+        "own direction"
+    );
+    assert_eq!(
+        app.open(&wire[..5], &mut plain),
+        Err(SessionError::TooShort),
+        "truncated"
+    );
+    assert_eq!(
+        app.open(&[], &mut plain),
+        Err(SessionError::TooShort),
+        "empty"
+    );
+
+    let mut tiny = heapless::Vec::<u8, 4>::new();
+    assert_eq!(
+        app.open(&wire, &mut tiny),
+        Err(SessionError::BufferTooSmall),
+        "small out"
+    );
+    assert_eq!(
+        device.seal(1, b"hello", &mut tiny),
+        Err(SessionError::BufferTooSmall),
+        "small seal"
+    );
+}
+
 /// Debug output never shows key material.
 #[test]
 fn debug_is_redacted() {
     let keys = LoginKeys::derive(&token(), &app_rand(), &dev_rand());
     assert_eq!(format!("{keys:?}"), "LoginKeys(<redacted>)", "keys");
+    assert_eq!(
+        format!("{:?}", SessionCipher::new(&keys, Role::App)),
+        "SessionCipher(<redacted>)",
+        "cipher"
+    );
     assert_eq!(format!("{:?}", token()), "Token(<redacted>)", "token");
 }

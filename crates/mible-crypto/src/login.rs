@@ -82,6 +82,16 @@ impl LoginKeys {
         keys
     }
 
+    /// The app-to-device key and nonce prefix.
+    pub(crate) const fn app_direction(&self) -> (&[u8; 16], [u8; 4]) {
+        (&self.app_key, self.app_iv)
+    }
+
+    /// The device-to-app key and nonce prefix.
+    pub(crate) const fn device_direction(&self) -> (&[u8; 16], [u8; 4]) {
+        (&self.dev_key, self.dev_iv)
+    }
+
     /// The proof the device sends: `HMAC(dev_key, dev_rand ‖ app_rand)`.
     #[must_use]
     pub fn device_proof(&self, app_rand: &Random, dev_rand: &Random) -> Proof {

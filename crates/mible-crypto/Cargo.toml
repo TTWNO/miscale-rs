@@ -12,6 +12,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+aes = { workspace = true }
+ccm = { workspace = true }
 heapless = { workspace = true }
 hkdf = { workspace = true }
 hmac = { workspace = true }
