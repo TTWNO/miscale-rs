@@ -7,6 +7,14 @@
 //! no clock and never allocates.
 #![no_std]
 
+pub mod frame;
+
+/// Largest GATT value this crate writes: one ATT write at the default MTU.
+pub const MAX_PACKET_LEN: usize = 20;
+
+/// One outgoing GATT value (a control frame or a fragment).
+pub type Packet = heapless::Vec<u8, MAX_PACKET_LEN>;
+
 /// Payload bytes carried by one data fragment.
 ///
 /// A fragment is `<index: u16 LE> <payload>`; at the default ATT MTU of 23 a

@@ -12,7 +12,9 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+heapless = { version = "0.9.4", default-features = false }
 mible-transport = { path = "crates/mible-transport" }
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
