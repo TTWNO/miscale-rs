@@ -257,6 +257,9 @@ name = "mible-spec"
 version = "0.1.0"
 dependencies = [
  "heapless",
+ "mible-crypto",
+ "mible-transport",
+ "proptest",
 ]
 
 [[package]]
