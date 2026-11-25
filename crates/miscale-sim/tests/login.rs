@@ -40,7 +40,7 @@ fn login_succeeds() {
         "client"
     );
     assert_eq!(scale.phase(), SimPhase::Spec, "simulator");
-    assert!(login.session_cipher().is_some(), "cipher");
+    assert!(login.take_session_cipher().is_some(), "cipher");
 }
 
 /// A login with another token is caught by the client at the device proof.

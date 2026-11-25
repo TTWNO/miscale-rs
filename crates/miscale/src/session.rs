@@ -105,6 +105,8 @@ pub enum SessionError {
     Timeout(Stage),
     /// The profile could not be built.
     Profile,
+    /// A state the session should never reach; please report it.
+    Internal,
 }
 
 impl fmt::Display for SessionError {
@@ -114,6 +116,7 @@ impl fmt::Display for SessionError {
             Self::Spec(err) => write!(f, "spec channel failed: {err}"),
             Self::Timeout(stage) => write!(f, "scale went quiet during {stage:?}"),
             Self::Profile => f.write_str("could not build the profile message"),
+            Self::Internal => f.write_str("internal error in the weigh session"),
         }
     }
 }
@@ -123,7 +126,7 @@ impl core::error::Error for SessionError {
         match self {
             Self::Login(err) => Some(err),
             Self::Spec(err) => Some(err),
-            Self::Timeout(_) | Self::Profile => None,
+            Self::Timeout(_) | Self::Profile | Self::Internal => None,
         }
     }
 }
@@ -311,10 +314,8 @@ impl WeighSession {
 
     /// Login succeeded: open the spec channel and say hello.
     fn on_authenticated(&mut self) {
-        let Some(cipher) = self.login.session_cipher() else {
-            return self.finish(Outcome::Failed(SessionError::Login(
-                LoginError::ProofMismatch,
-            )));
+        let Some(cipher) = self.login.take_session_cipher() else {
+            return self.finish(Outcome::Failed(SessionError::Internal));
         };
         self.push_event(Event::Authenticated);
         self.phase = Phase::Hello {

@@ -61,7 +61,7 @@ enum State {
 pub enum LoginStatus {
     /// Still exchanging messages.
     InProgress,
-    /// Logged in; [`Login::session_cipher`] is available.
+    /// Logged in; take the cipher with [`Login::take_session_cipher`].
     Authenticated,
     /// The login failed and will not progress further.
     Failed(LoginError),
@@ -137,8 +137,8 @@ impl core::error::Error for LoginError {
 pub struct Login {
     /// Current progress.
     state: State,
-    /// The device token (zeroised on drop).
-    token: Token,
+    /// The device token until the keys are derived (zeroised on drop).
+    token: Option<Token>,
     /// This side's random.
     app_rand: Random,
     /// The device's random, once received.
@@ -173,7 +173,7 @@ impl Login {
         };
         Self {
             state,
-            token: token.clone(),
+            token: Some(token.clone()),
             app_rand,
             dev_rand: [0; RANDOM_LEN],
             keys: None,
@@ -197,13 +197,16 @@ impl Login {
         }
     }
 
-    /// The session cipher, once [`LoginStatus::Authenticated`].
-    #[must_use]
-    pub fn session_cipher(&self) -> Option<SessionCipher> {
-        match (self.state, &self.keys) {
-            (State::Done, Some(keys)) => Some(SessionCipher::new(keys, Role::App)),
-            _ => None,
+    /// Hands out the session cipher once [`LoginStatus::Authenticated`],
+    /// exactly once: the keys move into it and leave the login. (Two ciphers
+    /// from one login would reuse AES-CCM nonces.)
+    pub fn take_session_cipher(&mut self) -> Option<SessionCipher> {
+        if !matches!(self.state, State::Done) {
+            return None;
         }
+        self.keys
+            .take()
+            .map(|keys| SessionCipher::new(&keys, Role::App))
     }
 
     /// Feeds a notification received on `channel`.
@@ -328,11 +331,11 @@ impl Login {
                 return self.fail(LoginError::BadLength { kind, len });
             };
             self.dev_rand = dev_rand;
-            self.keys = Some(LoginKeys::derive(
-                &self.token,
-                &self.app_rand,
-                &self.dev_rand,
-            ));
+            // The token is not needed again; drop (and zeroise) it now.
+            let Some(token) = self.token.take() else {
+                return self.fail(LoginError::ProofMismatch);
+            };
+            self.keys = Some(LoginKeys::derive(&token, &self.app_rand, &self.dev_rand));
             self.state = State::AwaitDeviceProof;
             return;
         }
@@ -359,5 +362,6 @@ impl Login {
         self.state = State::Failed(err);
         self.command = None;
         self.keys = None;
+        self.token = None;
     }
 }

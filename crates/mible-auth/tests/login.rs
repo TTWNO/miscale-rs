@@ -153,7 +153,7 @@ fn full_login() {
         LoginStatus::InProgress
     );
     assert!(
-        login.session_cipher().is_none(),
+        login.take_session_cipher().is_none(),
         "no cipher before confirmation"
     );
     assert_eq!(
@@ -162,7 +162,7 @@ fn full_login() {
     );
     assert!(drain(&mut login).is_empty(), "nothing after success");
 
-    let cipher = login.session_cipher().expect("cipher after success");
+    let cipher = login.take_session_cipher().expect("cipher after success");
     let device = SessionCipher::new(
         &LoginKeys::derive(&token(), &app_rand(), &dev_rand()),
         Role::Device,
@@ -202,7 +202,10 @@ fn wrong_token() {
         }
     }
     assert_eq!(status, LoginStatus::Failed(LoginError::ProofMismatch));
-    assert!(login.session_cipher().is_none(), "no cipher after failure");
+    assert!(
+        login.take_session_cipher().is_none(),
+        "no cipher after failure"
+    );
 }
 
 /// Device error codes and an explicit refusal end the login at any step.
